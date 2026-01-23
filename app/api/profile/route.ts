@@ -1,59 +1,119 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
 
-// Validation schemas
-const profileCreateSchema = z.object({
+const profileSchema = z.object({
   handle: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_-]+$/),
-  headline: z.string().max(200).optional(),
+  headline: z.string().max(100).optional(),
   roles: z.array(z.string()).min(1),
-  locationMode: z.enum(["remote", "hybrid", "onsite"]),
-  commuteMiles: z.number().int().min(0).max(100).optional(),
-  workAuthJson: z.record(z.any()),
-  availabilityJson: z.record(z.any()),
-  compJson: z.record(z.any()).optional(),
-  proofLinks: z.array(z.record(z.any())),
-  visibilityJson: z.record(z.any()),
+  locationMode: z.enum(['remote', 'hybrid', 'onsite']),
+  commuteMiles: z.number().min(0).max(100).optional(),
+  workAuthJson: z.object({
+    citizen: z.boolean(),
+    visa: z.string().optional(),
+    clearance: z.string().optional(),
+  }),
+  availabilityJson: z.object({
+    startDate: z.string(),
+    employmentType: z.enum(['full-time', 'contract', 'part-time']),
+    noticePeriod: z.number().min(0).max(90),
+  }),
+  compJson: z.object({
+    min: z.number().min(0),
+    max: z.number().min(0),
+    currency: z.string().default('USD'),
+    visible: z.boolean().default(false),
+  }).optional(),
+  proofLinks: z.array(z.object({
+    type: z.enum(['github', 'linkedin', 'portfolio', 'certification', 'other']),
+    url: z.string().url(),
+    label: z.string(),
+  })),
+  visibilityJson: z.object({
+    workAuth: z.boolean().default(false),
+    compensation: z.boolean().default(false),
+    contact: z.boolean().default(true),
+  }),
 });
 
-const profileUpdateSchema = profileCreateSchema.partial();
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      include: {
+        profiles: {
+          include: {
+            resumes: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ profiles: user.profiles });
+  } catch (error) {
+    console.error('Error fetching profiles:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await request.json();
-    const validation = profileCreateSchema.safeParse(body);
+    const validation = profileSchema.safeParse(body);
+    
     if (!validation.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: validation.error.format() },
+        { error: 'Validation failed', details: validation.error.format() },
         { status: 400 }
       );
     }
 
     const data = validation.data;
-
+    
     // Check if handle is available
     const existingProfile = await prisma.profile.findUnique({
       where: { handle: data.handle },
     });
-
+    
     if (existingProfile) {
       return NextResponse.json(
-        { error: "Handle already taken" },
+        { error: 'Handle already taken' },
         { status: 409 }
       );
+    }
+
+    // Get user
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+    
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     // Create profile
     const profile = await prisma.profile.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         handle: data.handle,
         headline: data.headline,
         roles: data.roles,
@@ -65,78 +125,12 @@ export async function POST(request: NextRequest) {
         proofLinks: data.proofLinks,
         visibilityJson: data.visibilityJson,
         published: false,
-        updatedAt: new Date(),
       },
     });
 
-    return NextResponse.json(profile, { status: 201 });
+    return NextResponse.json({ profile }, { status: 201 });
   } catch (error) {
-    console.error("Profile creation error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
-
-export async function PUT(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const validation = profileUpdateSchema.safeParse(body);
-    if (!validation.success) {
-      return NextResponse.json(
-        { error: "Validation failed", details: validation.error.format() },
-        { status: 400 }
-      );
-    }
-
-    const data = validation.data;
-    const { handle, ...updateData } = data;
-
-    // Find user's profile
-    const profile = await prisma.profile.findFirst({
-      where: { userId: session.user.id },
-    });
-
-    if (!profile) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
-    }
-
-    // If handle is being updated, check availability
-    if (handle && handle !== profile.handle) {
-      const existingProfile = await prisma.profile.findUnique({
-        where: { handle },
-      });
-
-      if (existingProfile) {
-        return NextResponse.json(
-          { error: "Handle already taken" },
-          { status: 409 }
-        );
-      }
-    }
-
-    // Update profile
-    const updatedProfile = await prisma.profile.update({
-      where: { id: profile.id },
-      data: {
-        ...updateData,
-        handle: handle || profile.handle,
-        updatedAt: new Date(),
-      },
-    });
-
-    return NextResponse.json(updatedProfile);
-  } catch (error) {
-    console.error("Profile update error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error('Error creating profile:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

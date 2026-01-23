@@ -1,232 +1,246 @@
-import { notFound } from "next/navigation";
-import Link from "next/link";
+import { notFound } from 'next/navigation';
+import { prisma } from '@/lib/prisma';
+import { Calendar, MapPin, DollarSign, Shield, CheckCircle, ExternalLink, MessageSquare, Download } from 'lucide-react';
+import Link from 'next/link';
 
-type PublicProfile = {
-  id: string;
-  handle: string;
-  headline: string | null;
-  roles: string[];
-  locationMode: string;
-  commuteMiles?: number;
-  workAuth?: Record<string, any>;
-  availability: Record<string, any>;
-  comp?: Record<string, any>;
-  proofLinks: Record<string, any>[];
-  updatedAt: string;
-  resume: {
-    fileUrl: string;
-    createdAt: string;
-  } | null;
-};
-
-type PageProps = {
+type Props = {
   params: Promise<{ handle: string }>;
 };
 
-export default async function PublicProfilePage({ params }: PageProps) {
+export default async function PublicProfilePage({ params }: Props) {
   const { handle } = await params;
   
-  try {
-    const response = await fetch(
-      `${process.env.NEXTAUTH_URL}/api/profile/${handle}`,
-      { next: { revalidate: 60 } } // Cache for 60 seconds
-    );
+  const profile = await prisma.profile.findUnique({
+    where: { 
+      handle,
+      published: true,
+    },
+    include: {
+      resumes: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+  });
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        notFound();
-      }
-      throw new Error(`Failed to fetch profile: ${response.status}`);
-    }
+  if (!profile) {
+    notFound();
+  }
 
-    const profile: PublicProfile = await response.json();
+  const workAuth = profile.workAuthJson as any;
+  const availability = profile.availabilityJson as any;
+  const compensation = profile.compJson as any;
+  const visibility = profile.visibilityJson as any;
+  const proofLinks = profile.proofLinks as any[];
 
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-white">
-        <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
-          {/* Header */}
-          <header className="mb-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-4xl font-bold text-zinc-900">
-                  {profile.headline || "Candidate Profile"}
-                </h1>
-                <p className="mt-2 text-lg text-zinc-600">
-                  silentapply.ai/{profile.handle}
-                </p>
-              </div>
-              <div className="rounded-lg bg-blue-50 px-4 py-2">
-                <span className="text-sm font-medium text-blue-700">
-                  Updated {new Date(profile.updatedAt).toLocaleDateString()}
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-white to-zinc-50 dark:from-black dark:to-zinc-900">
+      {/* Header */}
+      <header className="container mx-auto px-4 py-8">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <Shield className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+            <span className="font-semibold text-zinc-900 dark:text-white">SilentApply AI</span>
+          </div>
+          <div className="text-sm text-zinc-600 dark:text-zinc-400">
+            Powered by OMEGA • Governed by Keon
+          </div>
+        </div>
+      </header>
+
+      {/* Profile Hero */}
+      <div className="container mx-auto px-4 py-12">
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-zinc-900 dark:text-white">
+              {profile.headline || 'Professional Profile'}
+            </h1>
+            <div className="flex flex-wrap gap-2 mb-6">
+              {profile.roles.map((role: string, index: number) => (
+                <span 
+                  key={index}
+                  className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-sm font-medium"
+                >
+                  {role}
                 </span>
-              </div>
-            </div>
-          </header>
-
-          <div className="grid gap-8 lg:grid-cols-3">
-            {/* Main Content */}
-            <div className="lg:col-span-2">
-              {/* Roles */}
-              <section className="mb-8">
-                <h2 className="mb-4 text-xl font-semibold text-zinc-900">Target Roles</h2>
-                <div className="flex flex-wrap gap-2">
-                  {profile.roles.map((role, index) => (
-                    <span
-                      key={index}
-                      className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800"
-                    >
-                      {role}
-                    </span>
-                  ))}
-                </div>
-              </section>
-
-              {/* Location & Availability */}
-              <section className="mb-8">
-                <h2 className="mb-4 text-xl font-semibold text-zinc-900">Location & Availability</h2>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-lg border border-zinc-200 bg-white p-4">
-                    <h3 className="mb-2 text-sm font-medium text-zinc-500">Work Preference</h3>
-                    <p className="text-lg font-medium capitalize text-zinc-900">
-                      {profile.locationMode}
-                      {profile.commuteMiles && ` (${profile.commuteMiles} mile commute)`}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-zinc-200 bg-white p-4">
-                    <h3 className="mb-2 text-sm font-medium text-zinc-500">Availability</h3>
-                    <p className="text-lg font-medium text-zinc-900">
-                      {profile.availability.fullTime ? "Full-time" : "Contract"}
-                    </p>
-                    <p className="text-sm text-zinc-600">
-                      Start: {new Date(profile.availability.startDate).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              {/* Work Authorization */}
-              {profile.workAuth && (
-                <section className="mb-8">
-                  <h2 className="mb-4 text-xl font-semibold text-zinc-900">Work Authorization</h2>
-                  <div className="rounded-lg border border-zinc-200 bg-white p-4">
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      {Object.entries(profile.workAuth).map(([key, value]) => (
-                        <div key={key} className="text-center">
-                          <div className="mb-1 text-sm font-medium text-zinc-500 capitalize">
-                            {key.replace(/([A-Z])/g, ' $1').trim()}
-                          </div>
-                          <div className={`text-lg font-medium ${value ? 'text-green-600' : 'text-zinc-400'}`}>
-                            {value ? "✓" : "—"}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Compensation */}
-              {profile.comp && (
-                <section className="mb-8">
-                  <h2 className="mb-4 text-xl font-semibold text-zinc-900">Compensation Range</h2>
-                  <div className="rounded-lg border border-zinc-200 bg-white p-4">
-                    <p className="text-lg font-medium text-zinc-900">
-                      {profile.comp.range || "Not specified"}
-                    </p>
-                  </div>
-                </section>
-              )}
-            </div>
-
-            {/* Sidebar */}
-            <div className="lg:col-span-1">
-              {/* Proof Links */}
-              <section className="mb-8">
-                <h2 className="mb-4 text-xl font-semibold text-zinc-900">Proof Links</h2>
-                <div className="space-y-3">
-                  {profile.proofLinks.map((link, index) => (
-                    <a
-                      key={index}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center rounded-lg border border-zinc-200 bg-white p-3 hover:bg-zinc-50"
-                    >
-                      <div className="mr-3 flex h-8 w-8 items-center justify-center rounded-md bg-blue-100">
-                        <span className="text-sm font-medium text-blue-600">
-                          {link.type?.charAt(0).toUpperCase() || "L"}
-                        </span>
-                      </div>
-                      <div>
-                        <div className="font-medium text-zinc-900 capitalize">
-                          {link.type || "Link"}
-                        </div>
-                        <div className="text-sm text-zinc-500 truncate">
-                          {link.url.replace(/^https?:\/\//, '')}
-                        </div>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              </section>
-
-              {/* Resume Download */}
-              {profile.resume && (
-                <section className="mb-8">
-                  <h2 className="mb-4 text-xl font-semibold text-zinc-900">Resume</h2>
-                  <a
-                    href={profile.resume.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white p-4 hover:bg-zinc-50"
-                  >
-                    <div>
-                      <div className="font-medium text-zinc-900">Download Resume</div>
-                      <div className="text-sm text-zinc-500">
-                        Updated {new Date(profile.resume.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <div className="text-blue-600">
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                    </div>
-                  </a>
-                </section>
-              )}
-
-              {/* Book a Call */}
-              <section>
-                <h2 className="mb-4 text-xl font-semibold text-zinc-900">Book a Call</h2>
-                <div className="rounded-lg border border-zinc-200 bg-white p-4">
-                  <p className="mb-4 text-zinc-600">
-                    Interested in this candidate? Book a call directly with them.
-                  </p>
-                  <Link
-                    href={`/booking/${profile.handle}`}
-                    className="block w-full rounded-md bg-green-600 px-4 py-3 text-center font-medium text-white hover:bg-green-700"
-                  >
-                    Schedule Interview
-                  </Link>
-                </div>
-              </section>
+              ))}
             </div>
           </div>
 
-          {/* Footer */}
-          <footer className="mt-12 border-t border-zinc-200 pt-8 text-center">
-            <p className="text-sm text-zinc-500">
-              This profile was created with SilentApply — the recruiter FAQ + proof pack.
+          {/* Key Information Grid */}
+          <div className="grid md:grid-cols-2 gap-6 mb-12">
+            {/* Location & Availability */}
+            <div className="bg-white dark:bg-zinc-800 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-700">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-zinc-900 dark:text-white">
+                <MapPin className="w-5 h-5" />
+                Location & Availability
+              </h2>
+              <div className="space-y-3">
+                <div>
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Work Preference</div>
+                  <div className="font-medium text-zinc-900 dark:text-white">
+                    {profile.locationMode.charAt(0).toUpperCase() + profile.locationMode.slice(1)}
+                    {profile.commuteMiles && ` (within ${profile.commuteMiles} miles)`}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Start Date</div>
+                  <div className="font-medium text-zinc-900 dark:text-white flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {availability?.startDate || 'Immediately'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Employment Type</div>
+                  <div className="font-medium text-zinc-900 dark:text-white">
+                    {availability?.employmentType?.replace('-', ' ').toUpperCase() || 'Full-time'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Work Authorization */}
+            <div className="bg-white dark:bg-zinc-800 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-700">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-zinc-900 dark:text-white">
+                <Shield className="w-5 h-5" />
+                Work Authorization
+              </h2>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Citizenship Status</div>
+                    <div className="font-medium text-zinc-900 dark:text-white">
+                      {workAuth?.citizen ? 'Citizen' : 'Visa Required'}
+                    </div>
+                  </div>
+                  <CheckCircle className="w-6 h-6 text-green-500" />
+                </div>
+                {workAuth?.visa && (
+                  <div>
+                    <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Visa Type</div>
+                    <div className="font-medium text-zinc-900 dark:text-white">
+                      {workAuth.visa}
+                    </div>
+                  </div>
+                )}
+                {workAuth?.clearance && (
+                  <div>
+                    <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Security Clearance</div>
+                    <div className="font-medium text-zinc-900 dark:text-white">
+                      {workAuth.clearance}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Compensation */}
+            {compensation?.visible && (
+              <div className="bg-white dark:bg-zinc-800 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-700">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-zinc-900 dark:text-white">
+                  <DollarSign className="w-5 h-5" />
+                  Compensation Expectations
+                </h2>
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Range</div>
+                    <div className="font-medium text-zinc-900 dark:text-white">
+                      {compensation.currency} {compensation.min.toLocaleString()} - {compensation.max.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                    Annual salary expectations
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Resume Download */}
+            {profile.resumes.length > 0 && (
+              <div className="bg-white dark:bg-zinc-800 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-700">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-zinc-900 dark:text-white">
+                  <Download className="w-5 h-5" />
+                  Resume
+                </h2>
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Latest Resume</div>
+                    <a 
+                      href={`/api/resume/download/${profile.resumes[0].id}`}
+                      className="inline-flex items-center gap-2 font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Download Resume
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                    Updated {new Date(profile.resumes[0].createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Proof Links */}
+          {proofLinks.length > 0 && (
+            <div className="mb-12">
+              <h2 className="text-2xl font-semibold mb-6 text-zinc-900 dark:text-white">Proof Links</h2>
+              <div className="grid md:grid-cols-2 gap-4">
+                {proofLinks.map((link: any, index: number) => (
+                  <a
+                    key={index}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-white dark:bg-zinc-800 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-colors duration-200"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium text-zinc-900 dark:text-white mb-1">
+                          {link.label}
+                        </div>
+                        <div className="text-sm text-zinc-600 dark:text-zinc-400 truncate">
+                          {link.url.replace(/^https?:\/\//, '')}
+                        </div>
+                      </div>
+                      <ExternalLink className="w-5 h-5 text-zinc-400 dark:text-zinc-500" />
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Action Section */}
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-8 text-center">
+            <h2 className="text-2xl font-bold mb-4 text-white">
+              Interested in connecting?
+            </h2>
+            <p className="text-blue-100 mb-6 max-w-2xl mx-auto">
+              This candidate is available for interviews and ready to discuss opportunities.
             </p>
-            <p className="mt-2 text-sm text-zinc-400">
-              Questions? Use the chat feature below.
-            </p>
-          </footer>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-blue-600 hover:bg-blue-50 font-semibold rounded-lg transition-colors duration-200">
+                <MessageSquare className="w-5 h-5" />
+                Ask a Question
+              </button>
+              <button className="inline-flex items-center justify-center gap-2 px-6 py-3 border-2 border-white text-white hover:bg-white/10 font-semibold rounded-lg transition-colors duration-200">
+                <Calendar className="w-5 h-5" />
+                Book a Call
+              </button>
+            </div>
+            <div className="mt-6 text-sm text-blue-200">
+              <p>Questions answered instantly via SilentApply AI Q&A</p>
+            </div>
+          </div>
+
+          {/* Footer Note */}
+          <div className="mt-8 text-center text-sm text-zinc-600 dark:text-zinc-400">
+            <p>Profile created with SilentApply AI • Powered by OMEGA • Governed by Keon</p>
+            <p className="mt-1">This page answers common recruiter questions to reduce email back-and-forth</p>
+          </div>
         </div>
       </div>
-    );
-  } catch (error) {
-    console.error("Error loading profile:", error);
-    notFound();
-  }
+    </div>
+  );
 }
