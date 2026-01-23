@@ -1,0 +1,112 @@
+// SilentApply MVP Database Schema
+// Based on PRD specifications
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         String    @id @default(uuid())
+  email      String    @unique
+  createdAt  DateTime  @default(now()) @map("created_at")
+  profiles   Profile[]
+
+  @@map("users")
+}
+
+model Profile {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  handle         String    @unique
+  headline       String?
+  roles          String[]
+  locationMode   String    @map("location_mode") // remote|hybrid|onsite
+  commuteMiles   Int?      @map("commute_miles")
+  workAuthJson   Json      @map("work_auth_json")
+  availabilityJson Json    @map("availability_json")
+  compJson       Json?     @map("comp_json")
+  proofLinks     Json[]    @map("proof_links")
+  visibilityJson Json      @map("visibility_json")
+  published      Boolean   @default(false)
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  user           User      @relation(fields: [userId], references: [id])
+  resumes        Resume[]
+  qaThreads      QAThread[]
+  bookings       Booking[]
+  analyticsEvents AnalyticsEvent[]
+
+  @@map("profiles")
+}
+
+model Resume {
+  id         String    @id @default(uuid())
+  profileId  String    @map("profile_id")
+  fileUrl    String    @map("file_url")
+  parsedText String    @map("parsed_text")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  profile    Profile   @relation(fields: [profileId], references: [id])
+  chunks     ResumeChunk[]
+
+  @@map("resumes")
+}
+
+model ResumeChunk {
+  id        String   @id @default(uuid())
+  resumeId  String   @map("resume_id")
+  content   String
+  embedding Unsupported("vector")?
+  resume    Resume   @relation(fields: [resumeId], references: [id])
+
+  @@map("resume_chunks")
+}
+
+model QAThread {
+  id        String    @id @default(uuid())
+  profileId String    @map("profile_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+  profile   Profile   @relation(fields: [profileId], references: [id])
+  messages  QAMessage[]
+
+  @@map("qa_threads")
+}
+
+model QAMessage {
+  id         String   @id @default(uuid())
+  threadId   String   @map("thread_id")
+  role       String   // recruiter|system|candidate
+  content    String
+  sourcesJson Json    @map("sources_json")
+  status     String   // answered|escalated
+  createdAt  DateTime @default(now()) @map("created_at")
+  thread     QAThread @relation(fields: [threadId], references: [id])
+
+  @@map("qa_messages")
+}
+
+model Booking {
+  id        String   @id @default(uuid())
+  profileId String   @map("profile_id")
+  startTime DateTime @map("start_time")
+  endTime   DateTime @map("end_time")
+  status    String   // open|held|booked
+  email     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  profile   Profile  @relation(fields: [profileId], references: [id])
+
+  @@map("bookings")
+}
+
+model AnalyticsEvent {
+  id          String   @id @default(uuid())
+  profileId   String   @map("profile_id")
+  eventType   String   @map("event_type")
+  metadataJson Json    @map("metadata_json")
+  createdAt   DateTime @default(now()) @map("created_at")
+  profile     Profile  @relation(fields: [profileId], references: [id])
+
+  @@map("analytics_events")
+}
