@@ -99,6 +99,97 @@ Provide conceptual clarity for consistent implementation and communication.
 * Hierarchy Statement: "SilentApply AI, Powered by OMEGA, Governed by Keon"
 * Core Concept: **Recruiter FAQ + Proof Pack**
 
+## OFFICIAL BRAND LOCK — v1
+
+### Canonical Assets (v1)
+
+#### Logos
+* `silentapply-logo-full-refined-dark.svg` → PRIMARY
+* `silentapply-logo-full-refined-light.svg` → PRIMARY (light)
+* `silentapply-wordmark-refined-dark.svg`
+* `silentapply-wordmark-refined-light.svg`
+
+#### Icons & Hero
+* `dot.png` → Primary brand symbol
+* `dot_variant.png` → Secondary / state-only variant
+* `homepage_hero.png` → Primary homepage hero
+
+No redesigns. No reinterpretations. No substitutions.
+
+### Archive (Do Not Delete)
+
+All signal variants are retained for future experiments, motion accents, and marketing-only usage.
+Signal variants are not primary brand identifiers.
+
+### Visual Canon (v1)
+
+SilentApply visuals must communicate patient certainty and quiet inevitability. The system is present, deliberate, and unhurried.
+Outcome: calm, inevitable, already finished.
+
+Core traits:
+* Negative space is intentional and abundant
+* Contrast is controlled; never harsh or flashing
+* Motion is slow, minimal, and purposeful
+* Composition feels centered and stable, not chaotic
+* Details are precise, restrained, and durable
+* Visual hierarchy rule: Presence > Activity
+* Distance rule: visuals must read clearly both near and far
+
+### Assets Inventory (v1)
+
+| Asset Name | File | Role | Status | Usage Scope | Notes |
+| --- | --- | --- | --- | --- | --- |
+| SilentApply Logo Full (Refined Dark) | `assets/logos/silentapply-logo-full-refined-dark.svg` | Primary logo | Canonical v1 | Core brand | Use on dark backgrounds. |
+| SilentApply Logo Full (Refined Light) | `assets/logos/silentapply-logo-full-refined-light.svg` | Primary logo (light) | Canonical v1 | Core brand | Use on light backgrounds. |
+| SilentApply Wordmark (Refined Dark) | `assets/logos/silentapply-wordmark-refined-dark.svg` | Wordmark | Canonical v1 | Core brand | Wordmark-only lockup. |
+| SilentApply Wordmark (Refined Light) | `assets/logos/silentapply-wordmark-refined-light.svg` | Wordmark (light) | Canonical v1 | Core brand | Wordmark-only lockup for light backgrounds. |
+| Dot | `assets/dot.png` | Primary brand symbol | Canonical v1 | Core brand | Iconic mark. |
+| Dot Variant | `assets/dot_variant.png` | Secondary / state-only symbol | Canonical v1 | State-only | State-only usage. |
+| Homepage Hero | `assets/homepage_hero.png` | Primary homepage hero | Canonical v1 | Core brand | Default hero image. |
+| Signal (Primary PSD) | `assets/signal_primary.psd` | Signal variant | Archived | Marketing-only | Experimentation and marketing-only usage. |
+| Signal (Raster JPEG) | `assets/signal.jpeg` | Signal variant | Archived | Marketing-only | Experimentation and marketing-only usage. |
+| Signal (Raster PNG) | `assets/signal.png` | Signal variant | Archived | Marketing-only | Experimentation and marketing-only usage. |
+| Logo Full Signal (Dark) | `assets/logos/silentapply-logo-full-signal-dark.svg` | Signal variant | Archived | Marketing-only | Not a primary identifier. |
+| Logo Full Signal (Light) | `assets/logos/silentapply-logo-full-signal-light.svg` | Signal variant | Archived | Marketing-only | Not a primary identifier. |
+| Wordmark Signal (Dark) | `assets/logos/silentapply-wordmark-signal-dark.svg` | Signal variant | Archived | Marketing-only | Not a primary identifier. |
+| Wordmark Signal (Light) | `assets/logos/silentapply-wordmark-signal-light.svg` | Signal variant | Archived | Marketing-only | Not a primary identifier. |
+
+### Supporting Brand Assets
+
+Owner: Codex / Design Agent  
+Purpose: Build a cohesive system — not one-off decorative art
+
+Assets to generate:
+* Section dividers (thin lines, extremely subtle gradients)
+* Background textures (very low-noise grain, grid, or soft glow)
+* Callout frames (quotes, feature highlights, system notes)
+* Loading / waiting states (critical — silence-in-motion)
+
+Design rule: Every asset must feel patient, confident, and unrushed. If an asset feels salesy, loud, trendy, or attention-seeking, kill it immediately.
+
+### Forbidden Visual Patterns
+
+* Flashy gradients or neon palettes
+* High-saturation color blocks or loud accent colors
+* Aggressive motion, rapid loops, or attention-grabbing animation
+* Decorative noise, cluttered texture, or ornamental flourishes
+* Salesy UI tropes: badges, burst shapes, or hyperbolic callouts
+* Progress loaders or faux activity spinners that suggest anxiety
+* Success tropes: checkmarks, trophies, confetti, fireworks
+* Human metaphors: handshakes, smiling headshots, team high-fives
+* Job-market cliches: ladders, rockets, bullseyes, briefcases
+* Aggressive motion cues: pulsing glows, shaking elements, strobing
+
+### Global Brand Laws (Non-Negotiable)
+
+* SilentApply never begs
+* SilentApply never shouts
+* SilentApply never looks desperate
+* Silence is a feature, not absence
+* Brand contrast principle: If ForgePilot is command and control, SilentApply is presence and inevitability
+
 ---
 
 *This document establishes the foundational brand doctrine for SilentApply AI. It serves as the authoritative reference for all brand communications and should be treated as living documentation subject to refinement based on implementation experience.*
+
+SilentApply Brand Doctrine v1.0 is sealed. All visual, symbolic, and behavioral brand decisions must comply with this doctrine. Changes require explicit doctrine revision.
