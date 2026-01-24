@@ -1,13 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
+import { getServerSession } from 'next-auth';
+import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia',
-});
+// Initialize Stripe lazily
+let stripe: Stripe | null = null;
+
+function getStripe(): Stripe {
+  if (!stripe) {
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+      apiVersion: '2025-12-15.clover',
+    });
+  }
+  return stripe;
+}
 
 const STRIPE_PRICE_IDS = {
   monthly: process.env.STRIPE_PRICE_ID_MONTHLY || 'price_monthly_mvp',
@@ -47,7 +54,7 @@ const PLANS = {
   },
 };
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
@@ -121,7 +128,7 @@ export async function POST(request: NextRequest) {
     const finalPriceId = priceId || STRIPE_PRICE_IDS[interval as keyof typeof STRIPE_PRICE_IDS];
 
     // Create Stripe checkout session
-    const checkoutSession = await stripe.checkout.sessions.create({
+    const checkoutSession = await getStripe().checkout.sessions.create({
       customer_email: user.email,
       line_items: [
         {
@@ -168,9 +175,9 @@ export async function PUT(request: NextRequest) {
     }
 
     let event: Stripe.Event;
-    
+
     try {
-      event = stripe.webhooks.constructEvent(
+      event = getStripe().webhooks.constructEvent(
         body,
         sig,
         process.env.STRIPE_WEBHOOK_SECRET

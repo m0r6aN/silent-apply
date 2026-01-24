@@ -94,6 +94,8 @@ model Booking {
   endTime   DateTime @map("end_time")
   status    String   // open|held|booked
   email     String?
+  name      String?
+  heldUntil DateTime? @map("held_until")
   createdAt DateTime @default(now()) @map("created_at")
   profile   Profile  @relation(fields: [profileId], references: [id])
 
@@ -101,12 +103,12 @@ model Booking {
 }
 
 model AnalyticsEvent {
-  id          String   @id @default(uuid())
-  profileId   String   @map("profile_id")
-  eventType   String   @map("event_type")
-  metadataJson Json    @map("metadata_json")
-  createdAt   DateTime @default(now()) @map("created_at")
-  profile     Profile  @relation(fields: [profileId], references: [id])
+  id          String    @id @default(uuid())
+  profileId   String?   @map("profile_id")
+  eventType   String    @map("event_type")
+  metadataJson Json     @map("metadata_json")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  profile     Profile?  @relation(fields: [profileId], references: [id])
 
   @@map("analytics_events")
 }
