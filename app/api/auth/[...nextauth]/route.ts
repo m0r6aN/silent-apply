@@ -1,9 +1,7 @@
-import NextAuth from "next-auth";
+import { prisma } from "@/lib/prisma";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import { PrismaClient } from "@prisma/client";
+import NextAuth from "next-auth";
 import EmailProvider from "next-auth/providers/email";
-
-const prisma = new PrismaClient();
 
 export const authOptions = {
   adapter: PrismaAdapter(prisma),
@@ -28,7 +26,7 @@ export const authOptions = {
     strategy: "jwt" as const,
   },
   callbacks: {
-    async session({ session, token }) {
+    async session({ session, token }: { session: any, token: any }) {
       if (session.user && token.sub) {
         session.user.id = token.sub;
       }

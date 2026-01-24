@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { writeFile, mkdir, readFile } from "fs/promises";
-import { join } from "path";
-import { existsSync } from "fs";
-import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { prisma } from "@/lib/prisma";
+import { existsSync } from "fs";
+import { mkdir, writeFile } from "fs/promises";
+import { getServerSession } from "next-auth";
+import { NextRequest, NextResponse } from "next/server";
+import { join } from "path";
 
 // For PDF parsing
-import pdfParse from "pdf-parse";
+import { PDFParse } from "pdf-parse";
 // For DOCX parsing
 import mammoth from "mammoth";
 
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     
     if (file.type === "application/pdf") {
       try {
-        const pdfData = await pdfParse(buffer);
+        const pdfData = await new PDFParse({ data: buffer }).getText();
         parsedText = pdfData.text;
       } catch (pdfError) {
         console.error("PDF parsing error:", pdfError);
