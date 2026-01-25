@@ -82,9 +82,12 @@ Prepare SilentApply for Keon and OMEGA integration by creating:
   - ✅ `app/p/[handle]/page.tsx` rewritten to match CANON.md
   - ✅ BRAND_DOCTRINE archived with deprecation notice
   - ✅ CANON_COMPLIANCE_CHECKLIST.md added
+- ⏳ **ACTIVE** — omega-sdk#1 (REQUIRED dependency)
+  - Must merge before SilentApply PR #4 can merge
+  - Currently blocked by ForgePilot evidence UX wording pass
 
 ### Blocking
-- None (scaffolding is non-blocking)
+- None (this scaffolding work blocks no other PRs)
 
 ---
 
@@ -122,9 +125,9 @@ Prepare SilentApply for Keon and OMEGA integration by creating:
 ## 📊 Status Summary
 
 **Completed:** 31/31 items (100%)
-**In Progress:** 0 items
-**Blocked:** 1 item (awaiting OMEGA SDK examples PR merge)
-**Next:** Await OMEGA SDK PR merge, then ready for final review
+**In Progress:** 1 item (ForgePilot evidence UX wording pass)
+**Blocked:** 1 item (SilentApply PR #4 awaiting omega-sdk#1 merge - REQUIRED)
+**Next:** Complete ForgePilot pass → unblock omega-sdk#1 → unblock SilentApply PR #4
 
 ---
 
