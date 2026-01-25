@@ -1,4 +1,12 @@
-# SilentApply AI Brand Doctrine
+# NON-AUTHORITATIVE (ARCHIVED)
+
+This document is retained for historical context only.
+It is not canon and must not drive product copy, behavior, or UI.
+Authoritative source: `CANON.md`.
+
+---
+
+## SilentApply AI Brand Doctrine (Archived Text)
 
 ## Brand Purpose
 

@@ -32,6 +32,9 @@ export default async function PublicProfilePage({ params }: Props) {
   const compensation = profile.compJson as any;
   const visibility = profile.visibilityJson as any;
   const proofLinks = profile.proofLinks as any[];
+  const workAuthStatus =
+    workAuth?.citizen === true ? 'Citizen' : workAuth?.citizen === false ? 'Visa Required' : 'Not shared';
+  const hasWorkAuthStatus = workAuth?.citizen === true || workAuth?.citizen === false;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-zinc-50 dark:from-black dark:to-zinc-900">
@@ -40,10 +43,10 @@ export default async function PublicProfilePage({ params }: Props) {
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Shield className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-            <span className="font-semibold text-zinc-900 dark:text-white">SilentApply AI</span>
+            <span className="font-semibold text-zinc-900 dark:text-white">SilentApply</span>
           </div>
           <div className="text-sm text-zinc-600 dark:text-zinc-400">
-            Powered by OMEGA • Governed by Keon
+            Quiet link
           </div>
         </div>
       </header>
@@ -87,13 +90,15 @@ export default async function PublicProfilePage({ params }: Props) {
                   <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Start Date</div>
                   <div className="font-medium text-zinc-900 dark:text-white flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
-                    {availability?.startDate || 'Immediately'}
+                    {availability?.startDate || 'Not shared'}
                   </div>
                 </div>
                 <div>
                   <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Employment Type</div>
                   <div className="font-medium text-zinc-900 dark:text-white">
-                    {availability?.employmentType?.replace('-', ' ').toUpperCase() || 'Full-time'}
+                    {availability?.employmentType
+                      ? availability.employmentType.replace('-', ' ').toUpperCase()
+                      : 'Not shared'}
                   </div>
                 </div>
               </div>
@@ -110,10 +115,10 @@ export default async function PublicProfilePage({ params }: Props) {
                   <div>
                     <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Citizenship Status</div>
                     <div className="font-medium text-zinc-900 dark:text-white">
-                      {workAuth?.citizen ? 'Citizen' : 'Visa Required'}
+                      {workAuthStatus}
                     </div>
                   </div>
-                  <CheckCircle className="w-6 h-6 text-green-500" />
+                  {hasWorkAuthStatus && <CheckCircle className="w-6 h-6 text-green-500" />}
                 </div>
                 {workAuth?.visa && (
                   <div>
@@ -214,30 +219,29 @@ export default async function PublicProfilePage({ params }: Props) {
           {/* Action Section */}
           <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-8 text-center">
             <h2 className="text-2xl font-bold mb-4 text-white">
-              Interested in connecting?
+              Coordination
             </h2>
             <p className="text-blue-100 mb-6 max-w-2xl mx-auto">
-              This candidate is available for interviews and ready to discuss opportunities.
+              If enabled by the candidate, you can ask a question or request a time.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-blue-600 hover:bg-blue-50 font-semibold rounded-lg transition-colors duration-200">
                 <MessageSquare className="w-5 h-5" />
-                Ask a Question
+                Ask a question
               </button>
               <button className="inline-flex items-center justify-center gap-2 px-6 py-3 border-2 border-white text-white hover:bg-white/10 font-semibold rounded-lg transition-colors duration-200">
                 <Calendar className="w-5 h-5" />
-                Book a Call
+                Request a time
               </button>
             </div>
             <div className="mt-6 text-sm text-blue-200">
-              <p>Questions answered instantly via SilentApply AI Q&A</p>
+              <p>Questions are answered from shared profile details.</p>
             </div>
           </div>
 
           {/* Footer Note */}
           <div className="mt-8 text-center text-sm text-zinc-600 dark:text-zinc-400">
-            <p>Profile created with SilentApply AI • Powered by OMEGA • Governed by Keon</p>
-            <p className="mt-1">This page answers common recruiter questions to reduce email back-and-forth</p>
+            <p>This page answers common recruiter questions to reduce email back-and-forth.</p>
           </div>
         </div>
       </div>

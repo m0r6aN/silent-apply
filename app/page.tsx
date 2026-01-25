@@ -2,6 +2,7 @@ import { ArrowRight, CheckCircle, MessageSquare, Calendar, Shield, Zap } from 'l
 import Link from 'next/link';
 import { Playfair_Display } from 'next/font/google';
 
+// Public copy guardrail: follow docs/CANON_COMPLIANCE_CHECKLIST.md (CANON.md is authoritative).
 const playfair = Playfair_Display({
   subsets: ['latin'],
   display: 'swap',
@@ -29,14 +30,13 @@ export default function Home() {
         <div className="relative mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 py-20 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] md:py-32">
           <div className="max-w-xl">
             <p className="text-xs font-medium uppercase tracking-[0.21em] text-white/70">
-              SilentApply AI
+              SilentApply
             </p>
             <h1 className={`${playfair.className} mt-4 text-4xl font-semibold leading-tight sm:text-5xl md:text-6xl`}>
-              Your job search, already handled.
+              A quiet link for recruiter coordination.
             </h1>
             <p className="mt-6 text-lg leading-relaxed text-zinc-200 sm:text-xl">
-              One quiet profile link that answers recruiter questions, shares proof, and books interviews — without the
-              back-and-forth.
+              One profile link that answers common recruiter questions, shares proof when enabled, and supports optional booking.
             </p>
             <div className="mt-12 flex flex-wrap gap-4">
               <Link
@@ -48,7 +48,7 @@ export default function Home() {
               </Link>
             </div>
             <p className="mt-3 text-xs uppercase tracking-[0.18em] text-white/60">
-              Takes about 10 minutes
+              No recruiter accounts required
             </p>
           </div>
           <div className="hidden md:block" aria-hidden="true" />
@@ -68,10 +68,10 @@ export default function Home() {
       <section id="how-it-works" className="container mx-auto px-4 py-16 md:py-24 text-zinc-900">
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-4xl font-bold mb-4 text-zinc-900">
-            From 10 Emails to 1 Link
+            One link, clear answers
           </h2>
           <p className="text-lg text-zinc-600 max-w-2xl mx-auto">
-            SilentApply gives recruiters clear answers in one place — so conversations move forward without repetition.
+            SilentApply keeps common answers in one place to reduce repetition.
           </p>
         </div>
 
@@ -106,7 +106,7 @@ export default function Home() {
             </div>
             <h3 className="text-xl font-semibold mb-3 text-zinc-900">Proof Pack</h3>
             <p className="text-zinc-600 mb-4">
-              Showcase your resume, GitHub, LinkedIn, portfolio, and certifications in one organized view.
+              Share a resume and proof links in one organized view.
             </p>
             <ul className="space-y-2">
               <li className="flex items-center gap-2 text-sm text-zinc-600">
@@ -130,7 +130,7 @@ export default function Home() {
             </div>
             <h3 className="text-xl font-semibold mb-3 text-zinc-900">Book a Call</h3>
             <p className="text-zinc-600 mb-4">
-              Let recruiters schedule interviews directly without the back-and-forth. Integrated calendar with availability.
+              Optional booking for conversations, using the candidate&apos;s shared availability.
             </p>
             <ul className="space-y-2">
               <li className="flex items-center gap-2 text-sm text-zinc-600">
@@ -154,10 +154,10 @@ export default function Home() {
       <section className="container mx-auto px-4 py-16 md:py-24 text-zinc-900">
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-3xl p-8 md:p-12 text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4 text-white">
-            Set it up once. Use it everywhere.
+            Set it up once. Share it when asked.
           </h2>
           <p className="text-lg text-blue-100 mb-8 max-w-2xl mx-auto">
-            Create your SilentApply link in under 10 minutes. Share it whenever a recruiter asks.
+            Create a SilentApply link and share it when a recruiter asks.
           </p>
           <Link 
             href="/auth/signin"
@@ -168,7 +168,7 @@ export default function Home() {
           </Link>
           
           <div className="mt-8 text-sm text-blue-200">
-            <p>SilentApply AI • Powered by OMEGA • Governed by Keon</p>
+            <p>Candidate-controlled. Recruiter-friendly.</p>
           </div>
         </div>
       </section>
@@ -178,14 +178,14 @@ export default function Home() {
           <div className="mb-4 md:mb-0">
             <div className="flex items-center gap-2">
               <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-              <span className="font-semibold text-zinc-900 dark:text-white">SilentApply AI</span>
+              <span className="font-semibold text-zinc-900 dark:text-white">SilentApply</span>
             </div>
             <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
-              Recruiter FAQ + Proof Pack for modern job seekers
+              Recruiter Q&A and proof links for candidates
             </p>
           </div>
           <div className="text-sm text-zinc-600 dark:text-zinc-400">
-            <p>© 2026 SilentApply AI. All rights reserved.</p>
+            <p>© 2026 SilentApply. All rights reserved.</p>
           </div>
         </div>
       </footer>
