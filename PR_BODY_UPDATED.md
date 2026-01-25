@@ -12,10 +12,10 @@
 
 **Must merge AFTER:**
 1. ✅ **Gemini Campaign II** — Keon Control evidence browser + key lifecycle UX + TrustOps baseline (COMPLETE)
-2. ⏳ **OMEGA SDK examples PR** — Optional, if SilentApply references those docs/patterns
+2. ⏳ **OMEGA SDK examples PR** — https://github.com/m0r6aN/omega-sdk/pull/1 (**REQUIRED** — must merge before this PR)
 3. ✅ **Keon evidence URL canonicalization** — Decision ratified (COMPLETE)
 
-**Blocked Reason:** Awaiting OMEGA SDK examples PR (if applicable)
+**Blocked Reason:** Awaiting omega-sdk#1 merge (REQUIRED dependency)
 
 ---
 
