@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SilentApply
 
-## Getting Started
+SilentApply is a quiet professional coordination tool.
 
-First, run the development server:
+It provides candidates with a single profile link that:
+- answers reasonable recruiter questions
+- shares proof when enabled
+- supports calm, optional coordination for conversations
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+SilentApply is designed to reduce friction, not create leverage.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Canon
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+SilentApply is governed by a public canon that defines its behavior, boundaries, and principles.
 
-## Learn More
+Before proposing changes, features, or experiments, read:
 
-To learn more about Next.js, take a look at the following resources:
+**→ [CANON.md](./CANON.md)**
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+If a change violates the canon, it must not be implemented.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## What This Repository Contains
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- The SilentApply application code
+- Public-facing behavior defined by the canon
+- Infrastructure and services that support quiet, reliable operation
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This repository does **not** exist to optimize growth, engagement, or conversion.
+
+---
+
+## Development
+
+Implementation details, setup instructions, and deployment notes live alongside the codebase where appropriate.
+
+There is intentionally no marketing copy, feature list, or roadmap here.
+
+If you are contributing:
+- favor clarity over cleverness
+- favor calm over excitement
+- favor restraint over novelty
+
+---
+
+## License
+
+See the LICENSE file for details.

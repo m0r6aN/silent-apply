@@ -1,46 +1,69 @@
+/**
+ * Booking API Endpoint (Canon-Compliant)
+ *
+ * GET /api/booking - Get available slots
+ * POST /api/booking - Hold a slot
+ * PUT /api/booking - Confirm/release booking
+ *
+ * Enforces BOOKING_CANON_v1:
+ * - Hold semantics (10min expiry)
+ * - Confirm requires email
+ * - Quiet rate limiting
+ * - No urgency language
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { addDays, addHours, startOfDay, isWithinInterval } from 'date-fns';
+import { getOrCreateCorrelationId, CORRELATION_HEADER, createCorrelationLogger } from '@/lib/omega/correlation';
+import { allowBookingHold, allowBookingHoldByIP, getClientIP } from '@/lib/rateLimit';
 
 const getSlotsSchema = z.object({
-  profileHandle: z.string(),
+  profileHandle: z.string().min(1).max(64),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
 const holdSlotSchema = z.object({
-  profileHandle: z.string(),
+  profileHandle: z.string().min(1).max(64),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
-  email: z.string().email(),
-  name: z.string().min(1).max(100),
 });
 
 const confirmBookingSchema = z.object({
   bookingId: z.string().uuid(),
   confirm: z.boolean(),
+  email: z.string().email().optional(),
+  name: z.string().max(100).optional(),
 });
 
+// GET: Get available slots for a date
 export async function GET(request: NextRequest) {
+  const correlationId = await getOrCreateCorrelationId();
+  const log = createCorrelationLogger(correlationId);
+
   try {
     const { searchParams } = new URL(request.url);
     const profileHandle = searchParams.get('profileHandle');
     const date = searchParams.get('date');
-    
+
     const validation = getSlotsSchema.safeParse({ profileHandle, date });
-    
+
     if (!validation.success) {
       return NextResponse.json(
         { error: 'Validation failed', details: validation.error.format() },
-        { status: 400 }
+        {
+          status: 400,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
     const { profileHandle: handle, date: dateStr } = validation.data;
-    
+
     // Find profile
     const profile = await prisma.profile.findUnique({
-      where: { 
+      where: {
         handle,
         published: true,
       },
@@ -49,15 +72,28 @@ export async function GET(request: NextRequest) {
     if (!profile) {
       return NextResponse.json(
         { error: 'Profile not found or not published' },
-        { status: 404 }
+        {
+          status: 404,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
+
+    // Clean up expired holds first
+    await prisma.booking.updateMany({
+      where: {
+        profileId: profile.id,
+        status: 'held',
+        heldUntil: { lt: new Date() },
+      },
+      data: { status: 'open' },
+    });
 
     const targetDate = new Date(dateStr);
     const startOfTargetDate = startOfDay(targetDate);
     const endOfTargetDate = addDays(startOfTargetDate, 1);
 
-    // Get existing bookings for this date
+    // Get existing bookings for this date (held or booked only)
     const existingBookings = await prisma.booking.findMany({
       where: {
         profileId: profile.id,
@@ -71,24 +107,27 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Generate available slots (MVP: 9 AM - 5 PM, 1-hour slots)
+    // Generate available slots (9 AM - 5 PM, 1-hour slots)
     const slots = [];
-    const startHour = 9; // 9 AM
-    const endHour = 17; // 5 PM
-    
+    const startHour = 9;
+    const endHour = 17;
+
     for (let hour = startHour; hour < endHour; hour++) {
       const slotStart = addHours(startOfTargetDate, hour);
       const slotEnd = addHours(slotStart, 1);
-      
-      // Check if slot is already booked
+
+      // Check if slot overlaps with any existing booking
       const isBooked = existingBookings.some(booking => {
-        return isWithinInterval(slotStart, { 
-          start: booking.startTime, 
-          end: booking.endTime 
-        }) || isWithinInterval(slotEnd, { 
-          start: booking.startTime, 
-          end: booking.endTime 
-        });
+        return (
+          isWithinInterval(slotStart, {
+            start: booking.startTime,
+            end: booking.endTime,
+          }) ||
+          isWithinInterval(slotEnd, {
+            start: booking.startTime,
+            end: booking.endTime,
+          })
+        );
       });
 
       if (!isBooked) {
@@ -100,50 +139,54 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get held slots (for display)
-    const heldSlots = existingBookings
-      .filter(b => b.status === 'held')
-      .map(b => ({
-        id: b.id,
-        startTime: b.startTime.toISOString(),
-        endTime: b.endTime.toISOString(),
-        status: b.status,
-        heldUntil: b.heldUntil?.toISOString(),
-      }));
-
-    return NextResponse.json({
-      date: dateStr,
-      slots,
-      heldSlots,
-      timezone: 'UTC', // MVP: Use UTC
-    });
-
+    return NextResponse.json(
+      {
+        date: dateStr,
+        slots,
+        timezone: 'UTC',
+        correlationId,
+      },
+      {
+        status: 200,
+        headers: { [CORRELATION_HEADER]: correlationId },
+      }
+    );
   } catch (error) {
-    console.error('Error getting booking slots:', error);
+    log.error('booking.get_slots_error', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      {
+        status: 500,
+        headers: { [CORRELATION_HEADER]: correlationId },
+      }
     );
   }
 }
 
+// POST: Hold a slot
 export async function POST(request: NextRequest) {
+  const correlationId = await getOrCreateCorrelationId();
+  const log = createCorrelationLogger(correlationId);
+
   try {
     const body = await request.json();
     const validation = holdSlotSchema.safeParse(body);
-    
+
     if (!validation.success) {
       return NextResponse.json(
         { error: 'Validation failed', details: validation.error.format() },
-        { status: 400 }
+        {
+          status: 400,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
-    const { profileHandle, startTime, endTime, email, name } = validation.data;
-    
+    const { profileHandle, startTime, endTime } = validation.data;
+
     // Find profile
     const profile = await prisma.profile.findUnique({
-      where: { 
+      where: {
         handle: profileHandle,
         published: true,
       },
@@ -152,34 +195,69 @@ export async function POST(request: NextRequest) {
     if (!profile) {
       return NextResponse.json(
         { error: 'Profile not found or not published' },
-        { status: 404 }
+        {
+          status: 404,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
+      );
+    }
+
+    // Quiet rate limiting
+    const clientIP = getClientIP(request.headers);
+    const [profileLimit, ipLimit] = await Promise.all([
+      allowBookingHold(profile.id),
+      allowBookingHoldByIP(clientIP),
+    ]);
+
+    if (!profileLimit.allowed || !ipLimit.allowed) {
+      log.info('booking.rate_limited', {
+        profileId: profile.id,
+        profileLimitAllowed: profileLimit.allowed,
+        ipLimitAllowed: ipLimit.allowed,
+      });
+
+      // Canon: booking simply becomes unavailable (quiet)
+      return NextResponse.json(
+        { error: 'Time slot no longer available' },
+        {
+          status: 409, // Conflict - appears as slot conflict, not rate limit
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
     const start = new Date(startTime);
     const end = new Date(endTime);
-    const heldUntil = addHours(new Date(), 1); // Hold for 1 hour
+    // Canon: 10-minute hold window (BOOKING_CANON_v1 Section 3)
+    const heldUntil = new Date(Date.now() + 10 * 60 * 1000);
+
+    // Clean up expired holds
+    await prisma.booking.updateMany({
+      where: {
+        profileId: profile.id,
+        status: 'held',
+        heldUntil: { lt: new Date() },
+      },
+      data: { status: 'open' },
+    });
 
     // Check if slot is still available
     const conflictingBooking = await prisma.booking.findFirst({
       where: {
         profileId: profile.id,
-        startTime: {
-          lt: end,
-        },
-        endTime: {
-          gt: start,
-        },
-        status: {
-          in: ['held', 'booked'],
-        },
+        startTime: { lt: end },
+        endTime: { gt: start },
+        status: { in: ['held', 'booked'] },
       },
     });
 
     if (conflictingBooking) {
       return NextResponse.json(
         { error: 'Time slot no longer available' },
-        { status: 409 }
+        {
+          status: 409,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
@@ -190,123 +268,176 @@ export async function POST(request: NextRequest) {
         startTime: start,
         endTime: end,
         status: 'held',
-        email,
-        name,
         heldUntil,
       },
     });
 
-    // Create analytics event
+    // Log allowed event
+    log.info('booking.hold_created', {
+      bookingId: booking.id,
+      profileId: profile.id,
+      startTime: start.toISOString(),
+    });
+
     await prisma.analyticsEvent.create({
       data: {
         profileId: profile.id,
-        eventType: 'booking_held',
+        eventType: 'booking.hold_created',
         metadataJson: {
+          correlationId,
           bookingId: booking.id,
           startTime: start.toISOString(),
           endTime: end.toISOString(),
-          email,
-          name,
         },
       },
     });
 
-    // TODO: Send confirmation email with booking link
-    // For MVP, just return the booking ID
-
-    return NextResponse.json({
-      bookingId: booking.id,
-      startTime: start.toISOString(),
-      endTime: end.toISOString(),
-      heldUntil: heldUntil.toISOString(),
-      confirmUrl: `/api/booking/confirm?bookingId=${booking.id}`,
-    }, { status: 201 });
-
+    return NextResponse.json(
+      {
+        bookingId: booking.id,
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        heldUntil: heldUntil.toISOString(),
+        status: 'held',
+        correlationId,
+      },
+      {
+        status: 201,
+        headers: { [CORRELATION_HEADER]: correlationId },
+      }
+    );
   } catch (error) {
-    console.error('Error holding booking slot:', error);
+    log.error('booking.hold_error', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      {
+        status: 500,
+        headers: { [CORRELATION_HEADER]: correlationId },
+      }
     );
   }
 }
 
-// Separate endpoint for confirmation
+// PUT: Confirm or release booking
 export async function PUT(request: NextRequest) {
+  const correlationId = await getOrCreateCorrelationId();
+  const log = createCorrelationLogger(correlationId);
+
   try {
     const body = await request.json();
     const validation = confirmBookingSchema.safeParse(body);
-    
+
     if (!validation.success) {
       return NextResponse.json(
         { error: 'Validation failed', details: validation.error.format() },
-        { status: 400 }
+        {
+          status: 400,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
-    const { bookingId, confirm } = validation.data;
+    const { bookingId, confirm, email, name } = validation.data;
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
+      include: { profile: true },
     });
 
     if (!booking) {
       return NextResponse.json(
         { error: 'Booking not found' },
-        { status: 404 }
+        {
+          status: 404,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
     if (booking.status !== 'held') {
       return NextResponse.json(
         { error: 'Booking is not in held status' },
-        { status: 400 }
+        {
+          status: 400,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
+    // Check if hold expired
     if (booking.heldUntil && new Date() > booking.heldUntil) {
-      // Hold expired
       await prisma.booking.update({
         where: { id: bookingId },
         data: { status: 'open' },
       });
-      
+
       return NextResponse.json(
         { error: 'Booking hold has expired' },
-        { status: 410 }
+        {
+          status: 410,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
     if (confirm) {
+      // Canon: Confirmation requires email (BOOKING_CANON_v1 Section 4)
+      if (!email) {
+        return NextResponse.json(
+          { error: 'Email is required to confirm booking' },
+          {
+            status: 400,
+            headers: { [CORRELATION_HEADER]: correlationId },
+          }
+        );
+      }
+
       // Confirm booking
       await prisma.booking.update({
         where: { id: bookingId },
-        data: { status: 'booked' },
+        data: {
+          status: 'booked',
+          email,
+          name: name || null,
+        },
       });
 
-      // Create analytics event
+      // Log allowed event
+      log.info('booking.confirmed', {
+        bookingId,
+        profileId: booking.profileId,
+      });
+
       await prisma.analyticsEvent.create({
         data: {
           profileId: booking.profileId,
-          eventType: 'booking_confirmed',
+          eventType: 'booking.confirmed',
           metadataJson: {
-            bookingId: booking.id,
+            correlationId,
+            bookingId,
             startTime: booking.startTime.toISOString(),
             endTime: booking.endTime.toISOString(),
-            email: booking.email,
           },
         },
       });
 
-      // TODO: Send calendar invites to both parties
-      // TODO: Send confirmation emails
+      // TODO: Dispatch BookingNotifyAgent for emails
+      // This will be implemented as an OMEGA task
 
-      return NextResponse.json({
-        success: true,
-        message: 'Booking confirmed',
-        bookingId,
-        status: 'booked',
-      });
+      return NextResponse.json(
+        {
+          success: true,
+          bookingId,
+          status: 'booked',
+          startTime: booking.startTime.toISOString(),
+          endTime: booking.endTime.toISOString(),
+          correlationId,
+        },
+        {
+          status: 200,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
+      );
     } else {
       // Release hold
       await prisma.booking.update({
@@ -314,19 +445,29 @@ export async function PUT(request: NextRequest) {
         data: { status: 'open' },
       });
 
-      return NextResponse.json({
-        success: true,
-        message: 'Booking hold released',
-        bookingId,
-        status: 'open',
-      });
-    }
+      log.info('booking.hold_released', { bookingId });
 
+      return NextResponse.json(
+        {
+          success: true,
+          bookingId,
+          status: 'open',
+          correlationId,
+        },
+        {
+          status: 200,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
+      );
+    }
   } catch (error) {
-    console.error('Error confirming booking:', error);
+    log.error('booking.confirm_error', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      {
+        status: 500,
+        headers: { [CORRELATION_HEADER]: correlationId },
+      }
     );
   }
 }

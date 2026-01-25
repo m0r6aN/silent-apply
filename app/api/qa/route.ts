@@ -1,206 +1,167 @@
+/**
+ * Q&A API Endpoint (Canon-Compliant)
+ *
+ * POST /api/qa - Submit a question
+ *
+ * Enforces RECRUITER_Q&A_CANON_v1:
+ * - Bounded answers only
+ * - No inference beyond source data
+ * - No salary/compensation automation
+ * - Quiet rate limiting
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { getOrCreateCorrelationId, CORRELATION_HEADER, createCorrelationLogger } from '@/lib/omega/correlation';
+import { executeTask } from '@/lib/omega/dispatch';
+import { allowQAQuestion, allowQAQuestionByIP, getClientIP } from '@/lib/rateLimit';
 
 const askQuestionSchema = z.object({
-  profileHandle: z.string(),
+  profileHandle: z.string().min(1).max(64),
   question: z.string().min(1).max(500),
   recruiterEmail: z.string().email().optional(),
-});
-
-const escalateSchema = z.object({
-  threadId: z.string().uuid(),
-  message: z.string().min(1).max(1000),
+  recruiterName: z.string().max(100).optional(),
 });
 
 export async function POST(request: NextRequest) {
+  const correlationId = await getOrCreateCorrelationId();
+  const log = createCorrelationLogger(correlationId);
+
   try {
     const body = await request.json();
     const validation = askQuestionSchema.safeParse(body);
-    
+
     if (!validation.success) {
       return NextResponse.json(
         { error: 'Validation failed', details: validation.error.format() },
-        { status: 400 }
+        {
+          status: 400,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
-    const { profileHandle, question, recruiterEmail } = validation.data;
-    
+    const { profileHandle, question, recruiterEmail, recruiterName } = validation.data;
+
     // Find profile
     const profile = await prisma.profile.findUnique({
-      where: { 
+      where: {
         handle: profileHandle,
         published: true,
+      },
+      select: {
+        id: true,
+        handle: true,
       },
     });
 
     if (!profile) {
       return NextResponse.json(
         { error: 'Profile not found or not published' },
-        { status: 404 }
+        {
+          status: 404,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
-    // Create Q&A thread
-    const thread = await prisma.qAThread.create({
-      data: {
+    // Quiet rate limiting (Canon: progressive quiet throttling)
+    const clientIP = getClientIP(request.headers);
+    const [profileLimit, ipLimit] = await Promise.all([
+      allowQAQuestion(profile.id),
+      allowQAQuestionByIP(clientIP),
+    ]);
+
+    // If rate limited, return a neutral response (no "blocked" message)
+    if (!profileLimit.allowed || !ipLimit.allowed) {
+      log.info('qa.rate_limited', {
         profileId: profile.id,
-      },
-    });
+        profileLimitAllowed: profileLimit.allowed,
+        ipLimitAllowed: ipLimit.allowed,
+      });
 
-    // Create initial message
-    const message = await prisma.qAMessage.create({
-      data: {
-        threadId: thread.id,
-        role: 'recruiter',
-        content: question,
-        status: 'answered',
-        sourcesJson: [],
-      },
-    });
-
-    // TODO: Implement actual Q&A logic with OMEGA intelligence
-    // For MVP, return canned responses based on profile data
-    const profileData = {
-      workAuth: profile.workAuthJson,
-      availability: profile.availabilityJson,
-      compensation: profile.compJson,
-      roles: profile.roles,
-      locationMode: profile.locationMode,
-    };
-
-    // Simple keyword matching for MVP
-    let answer = "I don't have specific information about that yet. The candidate can be contacted directly for more details.";
-    let sources: string[] = [];
-
-    const questionLower = question.toLowerCase();
-    
-    if (questionLower.includes('work authorization') || questionLower.includes('visa') || questionLower.includes('citizen')) {
-      const workAuth = profileData.workAuth as any;
-      if (workAuth?.citizen) {
-        answer = "This candidate is a citizen and does not require visa sponsorship.";
-        sources = ['work_auth_json'];
-      } else if (workAuth?.visa) {
-        answer = `This candidate requires ${workAuth.visa} visa sponsorship.`;
-        sources = ['work_auth_json'];
-      }
-    } else if (questionLower.includes('available') || questionLower.includes('start date') || questionLower.includes('notice')) {
-      const availability = profileData.availability as any;
-      if (availability?.startDate) {
-        answer = `This candidate is available to start on ${availability.startDate}.`;
-        if (availability?.noticePeriod) {
-          answer += ` They have a ${availability.noticePeriod} day notice period.`;
+      // Canon: system simply becomes less responsive
+      // Return a calm, non-informative response
+      return NextResponse.json(
+        {
+          answer: "That information isn't available here.",
+          sources: [],
+          correlationId,
+        },
+        {
+          status: 200, // Not 429 - quiet suppression
+          headers: { [CORRELATION_HEADER]: correlationId },
         }
-        sources = ['availability_json'];
-      }
-    } else if (questionLower.includes('salary') || questionLower.includes('compensation') || questionLower.includes('pay')) {
-      const compensation = profileData.compensation as any;
-      if (compensation?.visible && compensation?.min && compensation?.max) {
-        answer = `This candidate's compensation expectations are ${compensation.currency} ${compensation.min.toLocaleString()} - ${compensation.max.toLocaleString()} annually.`;
-        sources = ['comp_json'];
-      }
-    } else if (questionLower.includes('location') || questionLower.includes('remote') || questionLower.includes('onsite')) {
-      answer = `This candidate prefers ${profileData.locationMode} work.`;
-      if (profile.commuteMiles) {
-        answer += ` They're willing to commute up to ${profile.commuteMiles} miles.`;
-      }
-      sources = ['location_mode', 'commute_miles'];
-    } else if (questionLower.includes('role') || questionLower.includes('position') || questionLower.includes('title')) {
-      answer = `This candidate is interested in ${profileData.roles.join(', ')} roles.`;
-      sources = ['roles'];
+      );
     }
 
-    // Create system response
-    const systemMessage = await prisma.qAMessage.create({
-      data: {
-        threadId: thread.id,
-        role: 'system',
-        content: answer,
-        status: 'answered',
-        sourcesJson: sources,
-      },
+    // Execute Q&A task via OMEGA dispatch
+    log.info('qa.question_submitted', {
+      profileId: profile.id,
+      questionLength: question.length,
     });
 
-    // Create analytics event
+    const taskResult = await executeTask(
+      'qa.answer',
+      {
+        profileId: profile.id,
+        question,
+        recruiterEmail,
+        recruiterName,
+      },
+      correlationId
+    );
+
+    const qaResult = taskResult.result;
+
+    // Log allowed event (per CANON observability rules)
     await prisma.analyticsEvent.create({
       data: {
         profileId: profile.id,
-        eventType: 'qa_question',
+        eventType: 'qa.question_submitted',
         metadataJson: {
-          question,
-          answer,
-          sources,
-          threadId: thread.id,
+          correlationId,
+          status: qaResult.status,
+          hasAnswer: !!qaResult.answer,
+          sourceCount: qaResult.sources?.length ?? 0,
         },
       },
     });
 
-    return NextResponse.json({
-      threadId: thread.id,
-      question,
-      answer,
-      sources,
-      confidence: sources.length > 0 ? 'high' : 'low',
-      lastUpdated: new Date().toISOString(),
-    });
-
-  } catch (error) {
-    console.error('Error in Q&A:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-// Separate endpoint for escalation
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const validation = escalateSchema.safeParse(body);
-    
-    if (!validation.success) {
+    // Return response
+    if (qaResult.status === 'failure') {
+      log.error('qa.task_failed', qaResult.error, { profileId: profile.id });
       return NextResponse.json(
-        { error: 'Validation failed', details: validation.error.format() },
-        { status: 400 }
+        { error: 'Unable to process question' },
+        {
+          status: 500,
+          headers: { [CORRELATION_HEADER]: correlationId },
+        }
       );
     }
 
-    const { threadId, message } = validation.data;
-
-    // Update thread status to escalated
-    await prisma.qAThread.update({
-      where: { id: threadId },
-      data: {},
-    });
-
-    // Create escalation message
-    await prisma.qAMessage.create({
-      data: {
-        threadId,
-        role: 'system',
-        content: `Question escalated to candidate: ${message}`,
-        status: 'escalated',
-        sourcesJson: ['escalation'],
+    return NextResponse.json(
+      {
+        answer: qaResult.answer ?? qaResult.refusalReason,
+        status: qaResult.status,
+        sources: qaResult.sources ?? [],
+        qaRecordId: qaResult.qaRecordId,
+        correlationId,
       },
-    });
-
-    // TODO: Send email to candidate with escalation
-    // For MVP, just log it
-    console.log(`Question escalated for thread ${threadId}: ${message}`);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Question escalated to candidate',
-      threadId,
-    });
-
+      {
+        status: 200,
+        headers: { [CORRELATION_HEADER]: correlationId },
+      }
+    );
   } catch (error) {
-    console.error('Error escalating question:', error);
+    log.error('qa.endpoint_error', error);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      {
+        status: 500,
+        headers: { [CORRELATION_HEADER]: correlationId },
+      }
     );
   }
 }

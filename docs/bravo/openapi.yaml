@@ -1,0 +1,964 @@
+openapi: 3.0.3
+info:
+  title: SilentApply API
+  version: 1.0.0
+  description: |
+    Thin, explicit, correlation-aware API for SilentApply.
+
+    All endpoints support correlation tracking via the X-Correlation-ID header.
+    Format: t:<tenant>|c:<uuidv7>
+
+    Canon-compliant: calm, bounded, candidate-controlled.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://api.silentapply.com
+    description: Production
+  - url: http://localhost:3000
+    description: Local development
+
+security:
+  - sessionAuth: []
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+      description: NextAuth session cookie (required for authenticated endpoints)
+
+  parameters:
+    CorrelationHeader:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: '^t:[a-zA-Z0-9_-]+\|c:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+      description: |
+        Correlation ID format: t:<tenant>|c:<uuidv7>
+        Generated server-side if not provided.
+        Propagated to OMEGA tasks and all logs.
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: BAD_REQUEST
+        message:
+          type: string
+          example: Profile handle already exists
+        correlationId:
+          type: string
+          example: t:default|c:01932a3c-4b5e-7890-abcd-ef1234567890
+
+    ProfileDTO:
+      type: object
+      required:
+        - id
+        - handle
+        - published
+      properties:
+        id:
+          type: string
+          format: uuid
+        handle:
+          type: string
+          minLength: 3
+          maxLength: 30
+          pattern: '^[a-z0-9-]+$'
+        headline:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            type: string
+        locationMode:
+          type: string
+          enum: [remote, hybrid, onsite]
+        commuteMiles:
+          type: integer
+          nullable: true
+        workAuth:
+          type: object
+          description: Work authorization metadata
+        availability:
+          type: object
+          description: Availability preferences
+        comp:
+          type: object
+          nullable: true
+          description: Compensation preferences (candidate-private by default)
+        proofLinks:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+                format: uri
+              label:
+                type: string
+        visibility:
+          type: object
+          properties:
+            resumeDownloadable:
+              type: boolean
+            bookingEnabled:
+              type: boolean
+            qaEnabled:
+              type: boolean
+        published:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProfileUpdateDTO:
+      type: object
+      properties:
+        headline:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            type: string
+        locationMode:
+          type: string
+          enum: [remote, hybrid, onsite]
+        commuteMiles:
+          type: integer
+          nullable: true
+        workAuth:
+          type: object
+        availability:
+          type: object
+        comp:
+          type: object
+          nullable: true
+        proofLinks:
+          type: array
+          items:
+            type: object
+        visibility:
+          type: object
+
+    PublicProfileDTO:
+      type: object
+      required:
+        - handle
+        - published
+      properties:
+        handle:
+          type: string
+        headline:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            type: string
+        locationMode:
+          type: string
+          enum: [remote, hybrid, onsite]
+        commuteMiles:
+          type: integer
+          nullable: true
+        workAuth:
+          type: object
+        proofLinks:
+          type: array
+          items:
+            type: object
+        visibility:
+          type: object
+        published:
+          type: boolean
+
+    ResumeDTO:
+      type: object
+      required:
+        - id
+        - profileId
+        - fileUrl
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        profileId:
+          type: string
+          format: uuid
+        fileUrl:
+          type: string
+          format: uri
+        parsedText:
+          type: string
+          description: Extracted text content (for internal use)
+        createdAt:
+          type: string
+          format: date-time
+
+    ResumeUploadResponse:
+      type: object
+      required:
+        - resumeId
+        - status
+      properties:
+        resumeId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [uploaded, processing]
+        message:
+          type: string
+          example: Resume uploaded. Ingestion queued.
+
+    QuestionDTO:
+      type: object
+      required:
+        - threadId
+        - question
+      properties:
+        threadId:
+          type: string
+          format: uuid
+        question:
+          type: string
+          maxLength: 1000
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: Optional recruiter email for follow-up
+
+    AnswerDTO:
+      type: object
+      required:
+        - threadId
+        - messageId
+        - answer
+        - status
+      properties:
+        threadId:
+          type: string
+          format: uuid
+        messageId:
+          type: string
+          format: uuid
+        answer:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [profile, resume]
+              field:
+                type: string
+        status:
+          type: string
+          enum: [answered, escalated]
+        createdAt:
+          type: string
+          format: date-time
+
+    QAHistoryDTO:
+      type: object
+      required:
+        - threadId
+        - messages
+      properties:
+        threadId:
+          type: string
+          format: uuid
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum: [recruiter, system]
+              content:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+
+    BookingSlotDTO:
+      type: object
+      required:
+        - id
+        - startTime
+        - endTime
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [open, held, booked]
+        heldUntil:
+          type: string
+          format: date-time
+          nullable: true
+
+    BookingHoldDTO:
+      type: object
+      required:
+        - slotId
+      properties:
+        slotId:
+          type: string
+          format: uuid
+
+    BookingHoldResponse:
+      type: object
+      required:
+        - slotId
+        - status
+        - heldUntil
+      properties:
+        slotId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [held]
+        heldUntil:
+          type: string
+          format: date-time
+        message:
+          type: string
+          example: Slot held for 10 minutes
+
+    BookingConfirmDTO:
+      type: object
+      required:
+        - slotId
+        - email
+        - name
+      properties:
+        slotId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          minLength: 1
+
+    BookingConfirmResponse:
+      type: object
+      required:
+        - slotId
+        - status
+      properties:
+        slotId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [booked]
+        message:
+          type: string
+          example: Booking confirmed
+
+    BookingCancelDTO:
+      type: object
+      required:
+        - slotId
+      properties:
+        slotId:
+          type: string
+          format: uuid
+
+paths:
+  /api/profile:
+    get:
+      summary: Get current user profile
+      description: Returns the authenticated user's profile
+      operationId: getProfile
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Profile retrieved
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileDTO'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Profile
+
+    put:
+      summary: Update user profile
+      description: Updates profile fields. Triggers no OMEGA tasks (pure data write).
+      operationId: updateProfile
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateDTO'
+      responses:
+        '200':
+          description: Profile updated
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileDTO'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Profile
+
+  /api/profile/publish:
+    post:
+      summary: Toggle profile publish state
+      description: Publishes or unpublishes the profile (idempotent)
+      operationId: publishProfile
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - published
+              properties:
+                published:
+                  type: boolean
+      responses:
+        '200':
+          description: Publish state updated
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileDTO'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Profile
+
+  /api/profile/{handle}:
+    get:
+      summary: Get public profile by handle (Quiet Link)
+      description: |
+        Public profile endpoint. No auth required.
+        Returns 404 if profile unpublished (no explanation).
+      operationId: getPublicProfile
+      security: []
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9-]+$'
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Public profile retrieved
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicProfileDTO'
+        '404':
+          description: Profile not found (includes unpublished profiles)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Public
+
+  /api/resume:
+    post:
+      summary: Upload resume
+      description: |
+        Uploads a resume file. Triggers OMEGA task: resume.ingest
+        Accepts PDF, DOCX (max 5MB).
+      operationId: uploadResume
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Resume uploaded, ingestion queued
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeUploadResponse'
+        '400':
+          description: Invalid file format or size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (quiet)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Resume
+
+  /api/resume/download:
+    get:
+      summary: Download resume
+      description: |
+        Downloads the user's resume if resumeDownloadable is enabled.
+        Returns 403 if download disabled.
+      operationId: downloadResume
+      security: []
+      parameters:
+        - name: profileId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Resume file
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="resume.pdf"
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: Download not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Resume not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Public
+
+  /api/qa:
+    post:
+      summary: Submit a question (public, no auth)
+      description: |
+        Submits a recruiter question. Triggers OMEGA task: qa.answer
+        Rate limited quietly.
+      operationId: submitQuestion
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - profileId
+                - question
+              properties:
+                profileId:
+                  type: string
+                  format: uuid
+                question:
+                  type: string
+                  maxLength: 1000
+                email:
+                  type: string
+                  format: email
+                  nullable: true
+      responses:
+        '202':
+          description: Question received, answer queued
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threadId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    example: processing
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (quiet)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Public
+
+  /api/qa/{profileId}:
+    get:
+      summary: Get Q&A history for a profile
+      description: Returns public Q&A thread for the given profile (if qaEnabled)
+      operationId: getQAHistory
+      security: []
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Q&A history
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QAHistoryDTO'
+        '403':
+          description: Q&A not enabled for this profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Public
+
+  /api/booking/{profileId}:
+    get:
+      summary: Get available booking slots
+      description: Returns available slots for the given profile (if bookingEnabled)
+      operationId: getBookingSlots
+      security: []
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/CorrelationHeader'
+      responses:
+        '200':
+          description: Available slots
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookingSlotDTO'
+        '403':
+          description: Booking not enabled for this profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Public
+
+  /api/booking/hold:
+    post:
+      summary: Create a booking hold
+      description: |
+        Places a temporary hold on a slot (default 10 min expiry).
+        Idempotent: repeated calls extend hold.
+      operationId: createBookingHold
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingHoldDTO'
+      responses:
+        '200':
+          description: Hold created or extended
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingHoldResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Slot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Slot already held or booked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (quiet)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Public
+
+  /api/booking/confirm:
+    post:
+      summary: Confirm a booking
+      description: |
+        Confirms a held slot. Triggers OMEGA task: booking.notify (optional).
+        Idempotent: repeated calls with same slotId succeed if already booked.
+      operationId: confirmBooking
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingConfirmDTO'
+      responses:
+        '200':
+          description: Booking confirmed
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingConfirmResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Slot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Slot not held or hold expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (quiet)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Public
+
+  /api/booking/cancel:
+    post:
+      summary: Cancel a booking
+      description: Cancels a held or booked slot (quiet, no penalties)
+      operationId: cancelBooking
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CorrelationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCancelDTO'
+      responses:
+        '200':
+          description: Booking cancelled
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slotId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    example: open
+        '404':
+          description: Slot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      tags:
+        - Public
+
+tags:
+  - name: Profile
+    description: Authenticated profile operations
+  - name: Public
+    description: Public endpoints (no auth required)
+  - name: Resume
+    description: Resume operations
