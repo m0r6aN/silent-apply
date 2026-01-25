@@ -123,8 +123,24 @@ Prepare SilentApply for Keon and OMEGA integration by creating:
 
 **Completed:** 31/31 items (100%)
 **In Progress:** 0 items
-**Blocked:** 0 items (✅ UNBLOCKED — Gemini Campaign II complete)
-**Next:** Prepare PR for review, await merge approval
+**Blocked:** 1 item (awaiting OMEGA SDK examples PR merge)
+**Next:** Await OMEGA SDK PR merge, then ready for final review
+
+---
+
+## 🔗 Pull Requests
+
+### SilentApply Integration Scaffolding
+- **PR:** [#4 - Integration Scaffolding: Keon + OMEGA + Canon Alignment](https://github.com/m0r6aN/silent-apply/pull/4)
+- **Status:** 🟡 DRAFT — Awaiting Dependencies
+- **Branch:** `augment/silentapply-integration-scaffold`
+- **Blocked By:** OMEGA SDK examples PR
+
+### OMEGA SDK Examples (Dependency)
+- **PR:** [omega-sdk#1 - Scaffolding examples + Keon integration seams](https://github.com/m0r6aN/omega-sdk/pull/1)
+- **Status:** 🟡 DRAFT — Awaiting Dependencies
+- **Branch:** `claude/omega-sdk-examples`
+- **Blocked By:** ForgePilot evidence UX wording pass
 
 ---
 
@@ -148,5 +164,5 @@ Prepare SilentApply for Keon and OMEGA integration by creating:
 
 ## 🔄 Last Updated
 
-2026-01-25 — Phase 0 complete, Gemini Campaign II complete, ready for PR review
+2026-01-25 — Phase 0 complete, PRs opened, awaiting OMEGA SDK merge
 
