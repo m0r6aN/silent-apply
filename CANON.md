@@ -10,7 +10,7 @@ It does not optimize outcomes.
 It does not create leverage.
 It does not persuade.
 
-It quietly makes reasonable interactions easier.
+It quietly makes common interactions easier.
 
 ---
 
@@ -19,9 +19,9 @@ It quietly makes reasonable interactions easier.
 SilentApply is a **quiet professional presence**.
 
 It provides:
-- a single profile link
+- a single, public profile link
 - clear, candidate-controlled information
-- bounded answers to reasonable questions
+- bounded answers to common questions
 - simple coordination for conversations
 
 It is designed to feel **inevitable**, not impressive.
@@ -307,7 +307,7 @@ It is a set of behavioral constraints.
 The canon exists to:
 - preserve candidate dignity
 - prevent pressure-based design
-- keep recruiter interactions reasonable
+- keep recruiter interactions minimal, in respect of both parties time
 - ensure optional monetization never leaks into core flows
 - maintain calm continuity across features and time
 

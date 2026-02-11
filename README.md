@@ -2,8 +2,8 @@
 
 SilentApply is a quiet professional coordination tool.
 
-It provides candidates with a single profile link that:
-- answers reasonable recruiter questions
+It provides candidates with a single, public profile link that:
+- answers common recruiter questions
 - shares proof when enabled
 - supports calm, optional coordination for conversations
 
