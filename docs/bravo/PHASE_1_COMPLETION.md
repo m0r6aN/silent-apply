@@ -362,7 +362,7 @@ Team Bravo defines the CONTRACT, not the implementation.
 
 ## File Manifest
 
-All deliverables located in: `D:\Repos\silent-apply\docs\bravo\`
+All deliverables located in: `D:\Repos\silent-apply\docs\bravo/`
 
 ```
 bravo/

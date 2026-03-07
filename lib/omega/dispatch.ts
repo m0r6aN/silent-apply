@@ -1,29 +1,90 @@
 /**
- * OMEGA Task Dispatch
+ * OMEGA Task Dispatch via OMEGA SDK.
  *
- * Task dispatch interface for SilentApply agents.
- * Supports both fire-and-forget async execution and synchronous execution.
- * Correlation ID threaded through for observability.
+ * Task dispatch interface for SilentApply APIs.
+ * Correlation ID is threaded into all SDK calls.
  */
 
 import { createCorrelationLogger } from './correlation';
-import { executeResumeIngest, ResumeIngestInput, ResumeIngestOutput } from './tasks/resumeIngest';
-import { executeQAAnswer, QAAnswerInput, QAAnswerOutput } from './tasks/qaAnswer';
-import { executeBookingNotify, BookingNotifyInput, BookingNotifyOutput } from './tasks/bookingNotify';
+import { getOmegaClient } from './sdk';
 
 type TaskName = 'resume.ingest' | 'qa.answer' | 'booking.notify';
 
+interface ResumeIngestInput {
+  profileId: string;
+  resumeId: string;
+  fileUrl: string;
+  fileType: 'pdf' | 'docx';
+}
+
+interface ResumeIngestOutput {
+  correlationId: string;
+  status: 'success' | 'failure';
+  resumeId?: string;
+  chunkCount?: number;
+  error?: {
+    code: string;
+    message: string;
+    retriable: boolean;
+  };
+}
+
+interface QAAnswerInput {
+  profileId: string;
+  question: string;
+  recruiterEmail?: string;
+  recruiterName?: string;
+}
+
+interface QAAnswerOutput {
+  correlationId: string;
+  profileId: string;
+  status: 'answered' | 'refused' | 'failure';
+  answer?: string;
+  refusalReason?: string;
+  qaRecordId?: string;
+  sources?: string[];
+  error?: {
+    code: string;
+    message: string;
+    retriable: boolean;
+  };
+}
+
+interface BookingNotifyInput {
+  bookingId: string;
+  profileId: string;
+  recruiterEmail: string;
+  recruiterName?: string;
+  slotStart: string;
+  slotEnd: string;
+  notifyCandidate: boolean;
+}
+
+interface BookingNotifyOutput {
+  correlationId: string;
+  bookingId: string;
+  status: 'success' | 'partial' | 'failure';
+  recruiterNotified: boolean;
+  candidateNotified?: boolean;
+  error?: {
+    code: string;
+    message: string;
+    retriable: boolean;
+  };
+}
+
 interface TaskDefinition {
   'resume.ingest': {
-    input: Omit<ResumeIngestInput, 'correlationId'>;
+    input: ResumeIngestInput;
     output: ResumeIngestOutput;
   };
   'qa.answer': {
-    input: Omit<QAAnswerInput, 'correlationId'>;
+    input: QAAnswerInput;
     output: QAAnswerOutput;
   };
   'booking.notify': {
-    input: Omit<BookingNotifyInput, 'correlationId'>;
+    input: BookingNotifyInput;
     output: BookingNotifyOutput;
   };
 }
@@ -54,56 +115,13 @@ export async function dispatchTask<T extends TaskName>(
   correlationId: string
 ): Promise<DispatchResult<T>> {
   const log = createCorrelationLogger(correlationId);
-  const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-
-  log.info('task.dispatched', {
-    taskId,
-    taskName
+  const client = getOmegaClient();
+  const created = await client.tasks.create(taskName, payload as unknown as Record<string, unknown>, {
+    correlationId,
   });
 
-  // Fire-and-forget execution
-  setImmediate(async () => {
-    const taskLog = createCorrelationLogger(correlationId);
-    taskLog.info('task.execution_started', { taskId, taskName });
-
-    try {
-      let result: unknown;
-
-      switch (taskName) {
-        case 'resume.ingest':
-          result = await executeResumeIngest({
-            correlationId,
-            ...payload as TaskDefinition['resume.ingest']['input']
-          });
-          break;
-
-        case 'qa.answer':
-          result = await executeQAAnswer({
-            correlationId,
-            ...payload as TaskDefinition['qa.answer']['input']
-          });
-          break;
-
-        case 'booking.notify':
-          result = await executeBookingNotify({
-            correlationId,
-            ...payload as TaskDefinition['booking.notify']['input']
-          });
-          break;
-
-        default:
-          throw new Error(`Unknown task: ${taskName}`);
-      }
-
-      taskLog.info('task.execution_completed', {
-        taskId,
-        taskName,
-        status: (result as { status: string }).status
-      });
-    } catch (err) {
-      taskLog.error('task.execution_failed', err, { taskId, taskName });
-    }
-  });
+  const taskId = created.taskId;
+  log.info('task.dispatched', { taskId, taskName });
 
   return {
     taskId,
@@ -125,43 +143,30 @@ export async function executeTask<T extends TaskName>(
   correlationId: string
 ): Promise<ExecuteResult<T>> {
   const log = createCorrelationLogger(correlationId);
-  const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const client = getOmegaClient();
 
   log.info('task.execute_started', {
-    taskId,
     taskName
   });
 
   const startTime = Date.now();
+  let taskId = '';
 
   try {
-    let result: TaskDefinition[T]['output'];
+    const created = await client.tasks.create(taskName, payload as unknown as Record<string, unknown>, {
+      correlationId,
+    });
+    taskId = created.taskId;
+    const completedTask = await client.tasks.waitForCompletion(taskId, {
+      pollIntervalMs: 500,
+      timeoutMs: 60_000,
+    });
 
-    switch (taskName) {
-      case 'resume.ingest':
-        result = await executeResumeIngest({
-          correlationId,
-          ...payload as TaskDefinition['resume.ingest']['input']
-        }) as TaskDefinition[T]['output'];
-        break;
-
-      case 'qa.answer':
-        result = await executeQAAnswer({
-          correlationId,
-          ...payload as TaskDefinition['qa.answer']['input']
-        }) as TaskDefinition[T]['output'];
-        break;
-
-      case 'booking.notify':
-        result = await executeBookingNotify({
-          correlationId,
-          ...payload as TaskDefinition['booking.notify']['input']
-        }) as TaskDefinition[T]['output'];
-        break;
-
-      default:
-        throw new Error(`Unknown task: ${taskName}`);
+    if (completedTask.status !== 'completed') {
+      throw new Error(`Task ${taskId} ended in status '${completedTask.status}'`);
     }
+
+    const result = (completedTask.result ?? {}) as unknown as TaskDefinition[T]['output'];
 
     const durationMs = Date.now() - startTime;
     log.info('task.execute_completed', {

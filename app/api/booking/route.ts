@@ -17,6 +17,7 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { addDays, addHours, startOfDay, isWithinInterval } from 'date-fns';
 import { getOrCreateCorrelationId, CORRELATION_HEADER, createCorrelationLogger } from '@/lib/omega/correlation';
+import { dispatchTask } from '@/lib/omega/dispatch';
 import { allowBookingHold, allowBookingHoldByIP, getClientIP } from '@/lib/rateLimit';
 
 const getSlotsSchema = z.object({
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
     const endOfTargetDate = addDays(startOfTargetDate, 1);
 
     // Get existing bookings for this date (held or booked only)
-    const existingBookings = await prisma.booking.findMany({
+    const existingBookings = (await prisma.booking.findMany({
       where: {
         profileId: profile.id,
         startTime: {
@@ -105,7 +106,7 @@ export async function GET(request: NextRequest) {
           in: ['held', 'booked'],
         },
       },
-    });
+    })) as Array<{ startTime: Date; endTime: Date }>;
 
     // Generate available slots (9 AM - 5 PM, 1-hour slots)
     const slots = [];
@@ -117,7 +118,7 @@ export async function GET(request: NextRequest) {
       const slotEnd = addHours(slotStart, 1);
 
       // Check if slot overlaps with any existing booking
-      const isBooked = existingBookings.some(booking => {
+      const isBooked = existingBookings.some((booking) => {
         return (
           isWithinInterval(slotStart, {
             start: booking.startTime,
@@ -421,8 +422,26 @@ export async function PUT(request: NextRequest) {
         },
       });
 
-      // TODO: Dispatch BookingNotifyAgent for emails
-      // This will be implemented as an OMEGA task
+      try {
+        await dispatchTask(
+          'booking.notify',
+          {
+            bookingId,
+            profileId: booking.profileId,
+            recruiterEmail: email,
+            recruiterName: name,
+            slotStart: booking.startTime.toISOString(),
+            slotEnd: booking.endTime.toISOString(),
+            notifyCandidate: true,
+          },
+          correlationId
+        );
+      } catch (dispatchError) {
+        log.warn('booking.notify_dispatch_failed', {
+          bookingId,
+          error: dispatchError instanceof Error ? dispatchError.message : String(dispatchError),
+        });
+      }
 
       return NextResponse.json(
         {

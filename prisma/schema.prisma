@@ -60,7 +60,7 @@ model ResumeChunk {
   id        String   @id @default(uuid())
   resumeId  String   @map("resume_id")
   content   String
-  embedding Unsupported("vector")?
+  embedding Unsupported("extensions.vector")?
   resume    Resume   @relation(fields: [resumeId], references: [id])
 
   @@map("resume_chunks")

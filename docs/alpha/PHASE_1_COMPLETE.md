@@ -10,7 +10,7 @@
 
 ## Artifacts Created
 
-All artifacts saved to `D:\Repos\silent-apply\docs\alpha\`
+All artifacts saved to `D:\Repos\silent-apply\docs\alpha/`
 
 ### 1. UI_COMPONENT_INVENTORY.md
 

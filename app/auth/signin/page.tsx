@@ -64,7 +64,7 @@ export default function SignIn() {
             Continue
           </h1>
           <p className="mt-4 text-base leading-relaxed text-zinc-200 sm:text-lg">
-            Enter your email and we'll send you a link to continue.
+            Enter your email and we&apos;ll send you a link to continue.
             <span className="block text-zinc-400">No passwords. No noise.</span>
           </p>
 

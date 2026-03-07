@@ -214,7 +214,7 @@ All API behaviors:
 
 ## Files
 
-All specs in: `D:\Repos\silent-apply\docs\bravo\`
+All specs in: `D:\Repos\silent-apply\docs\bravo/`
 
 - `openapi.yaml` — OpenAPI 3.0 spec
 - `DTO_SCHEMAS.md` — TypeScript interfaces

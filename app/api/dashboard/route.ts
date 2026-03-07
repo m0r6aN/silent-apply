@@ -4,6 +4,32 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
 import { subDays, startOfDay, endOfDay } from 'date-fns';
 
+type DashboardProfile = {
+  id: string;
+  handle: string;
+  headline: string | null;
+  published: boolean;
+  resumes: unknown[];
+};
+
+type GroupedStat = {
+  eventType: string;
+  _count: {
+    eventType: number;
+  };
+};
+
+type RecentEvent = {
+  id: string;
+  eventType: string;
+  profile: {
+    handle: string;
+    headline: string | null;
+  } | null;
+  metadataJson: unknown;
+  createdAt: Date;
+};
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -42,7 +68,7 @@ export async function GET(request: NextRequest) {
     const thirtyDaysAgo = subDays(now, 30);
 
     // Get analytics for all user's profiles
-    const profileIds = user.profiles.map(p => p.id);
+    const profileIds = user.profiles.map((p: DashboardProfile) => p.id);
     
     const [recentEvents, weeklyStats, monthlyStats] = await Promise.all([
       // Recent events
@@ -94,9 +120,9 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Format stats
-    const formatStats = (stats: any[]) => {
+    const formatStats = (stats: GroupedStat[]) => {
       const result: Record<string, number> = {};
-      stats.forEach(stat => {
+      stats.forEach((stat) => {
         result[stat.eventType] = stat._count.eventType;
       });
       return result;
@@ -108,7 +134,7 @@ export async function GET(request: NextRequest) {
     // Calculate totals
     const totalStats = {
       profiles: user.profiles.length,
-      publishedProfiles: user.profiles.filter(p => p.published).length,
+      publishedProfiles: user.profiles.filter((p: DashboardProfile) => p.published).length,
       totalViews: monthlyStatsFormatted['profile_view'] || 0,
       totalQuestions: monthlyStatsFormatted['qa_question'] || 0,
       totalBookings: (monthlyStatsFormatted['booking_held'] || 0) + (monthlyStatsFormatted['booking_confirmed'] || 0),
@@ -122,7 +148,7 @@ export async function GET(request: NextRequest) {
 
     // Get top performing profile
     const profilePerformance = await Promise.all(
-      user.profiles.map(async (profile) => {
+      user.profiles.map(async (profile: DashboardProfile) => {
         const [views, questions, bookings] = await Promise.all([
           prisma.analyticsEvent.count({
             where: {
@@ -167,7 +193,7 @@ export async function GET(request: NextRequest) {
     );
 
     // Sort by performance
-    profilePerformance.sort((a, b) => b.views - a.views);
+    profilePerformance.sort((a: { views: number }, b: { views: number }) => b.views - a.views);
 
     return NextResponse.json({
       user: {
@@ -178,7 +204,7 @@ export async function GET(request: NextRequest) {
       conversionRate,
       weeklyStats: weeklyStatsFormatted,
       monthlyStats: monthlyStatsFormatted,
-      recentEvents: recentEvents.map(event => ({
+      recentEvents: (recentEvents as RecentEvent[]).map((event) => ({
         id: event.id,
         eventType: event.eventType,
         profileHandle: event.profile?.handle,
