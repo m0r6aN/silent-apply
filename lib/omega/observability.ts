@@ -16,8 +16,8 @@
  * - Behavioral analysis
  */
 
+// Deprecated: use @/lib/observability instead. This file remains for historical reference only.
 import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
 import { createCorrelationLogger } from './correlation';
 
 // Allowed event types (SEALED)
@@ -63,7 +63,8 @@ export async function logEvent(
       data: {
         profileId,
         eventType,
-        metadataJson: metadata as Prisma.InputJsonValue,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        metadataJson: JSON.parse(JSON.stringify(metadata)) as any,
       },
     });
 

@@ -35,6 +35,8 @@ const profileSchema = z.object({
     workAuth: z.boolean().default(false),
     compensation: z.boolean().default(false),
     contact: z.boolean().default(true),
+    resume: z.boolean().default(false),
+    booking: z.boolean().default(false),
   }),
 });
 
@@ -131,6 +133,58 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ profile }, { status: 201 });
   } catch (error) {
     console.error('Error creating profile:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    // Allow partial updates — omit handle (handle cannot change after creation)
+    const updateSchema = profileSchema.omit({ handle: true }).partial();
+    const validation = updateSchema.safeParse(body);
+
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: validation.error.format() },
+        { status: 400 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    const existing = await prisma.profile.findFirst({ where: { userId: user.id } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    }
+
+    const data = validation.data;
+    const profile = await prisma.profile.update({
+      where: { id: existing.id },
+      data: {
+        ...(data.headline !== undefined && { headline: data.headline }),
+        ...(data.roles !== undefined && { roles: data.roles }),
+        ...(data.locationMode !== undefined && { locationMode: data.locationMode }),
+        ...(data.commuteMiles !== undefined && { commuteMiles: data.commuteMiles }),
+        ...(data.workAuthJson !== undefined && { workAuthJson: data.workAuthJson }),
+        ...(data.availabilityJson !== undefined && { availabilityJson: data.availabilityJson }),
+        ...(data.compJson !== undefined && { compJson: data.compJson }),
+        ...(data.proofLinks !== undefined && { proofLinks: data.proofLinks }),
+        ...(data.visibilityJson !== undefined && { visibilityJson: data.visibilityJson }),
+      },
+    });
+
+    return NextResponse.json({ profile });
+  } catch (error) {
+    console.error('Error updating profile:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

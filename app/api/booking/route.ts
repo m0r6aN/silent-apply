@@ -16,8 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { addDays, addHours, startOfDay, isWithinInterval } from 'date-fns';
-import { getOrCreateCorrelationId, CORRELATION_HEADER, createCorrelationLogger } from '@/lib/omega/correlation';
-import { dispatchTask } from '@/lib/omega/dispatch';
+import { getOrCreateCorrelationId, CORRELATION_HEADER, createCorrelationLogger } from '@/lib/correlation';
 import { allowBookingHold, allowBookingHoldByIP, getClientIP } from '@/lib/rateLimit';
 
 const getSlotsSchema = z.object({
@@ -284,12 +283,8 @@ export async function POST(request: NextRequest) {
       data: {
         profileId: profile.id,
         eventType: 'booking.hold_created',
-        metadataJson: {
-          correlationId,
-          bookingId: booking.id,
-          startTime: start.toISOString(),
-          endTime: end.toISOString(),
-        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        metadataJson: JSON.parse(JSON.stringify({ correlationId, bookingId: booking.id, startTime: start.toISOString(), endTime: end.toISOString() })) as any,
       },
     });
 
@@ -413,35 +408,12 @@ export async function PUT(request: NextRequest) {
         data: {
           profileId: booking.profileId,
           eventType: 'booking.confirmed',
-          metadataJson: {
-            correlationId,
-            bookingId,
-            startTime: booking.startTime.toISOString(),
-            endTime: booking.endTime.toISOString(),
-          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          metadataJson: JSON.parse(JSON.stringify({ correlationId, bookingId, startTime: booking.startTime.toISOString(), endTime: booking.endTime.toISOString() })) as any,
         },
       });
 
-      try {
-        await dispatchTask(
-          'booking.notify',
-          {
-            bookingId,
-            profileId: booking.profileId,
-            recruiterEmail: email,
-            recruiterName: name,
-            slotStart: booking.startTime.toISOString(),
-            slotEnd: booking.endTime.toISOString(),
-            notifyCandidate: true,
-          },
-          correlationId
-        );
-      } catch (dispatchError) {
-        log.warn('booking.notify_dispatch_failed', {
-          bookingId,
-          error: dispatchError instanceof Error ? dispatchError.message : String(dispatchError),
-        });
-      }
+      // Booking confirmed — notification delivery handled by candidate's own email setup
 
       return NextResponse.json(
         {
