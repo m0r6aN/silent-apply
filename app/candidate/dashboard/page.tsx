@@ -2,6 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 type Profile = {
@@ -14,6 +15,7 @@ type Profile = {
 
 export default function CandidateDashboard() {
   const { data: session, status } = useSession();
+  const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,9 +33,17 @@ export default function CandidateDashboard() {
       if (response.ok) {
         const data = await response.json();
         // API returns { profiles: [...] }
-        setProfile(data.profiles?.[0] ?? null);
+        const next = data.profiles?.[0] ?? null;
+        setProfile(next);
+        // Onboarding: a candidate with no profile is sent straight to create one.
+        if (!next) {
+          router.replace("/candidate/profile/edit?new=true");
+          return;
+        }
       } else if (response.status === 404) {
         setProfile(null);
+        router.replace("/candidate/profile/edit?new=true");
+        return;
       } else {
         setError("Failed to load profile");
       }
@@ -128,6 +138,14 @@ export default function CandidateDashboard() {
                   >
                     Edit
                   </Link>
+                  <a
+                    href={`/p/${profile.handle}?preview=true`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 rounded-md border border-zinc-300 px-4 py-2 text-center text-zinc-700 hover:bg-zinc-50"
+                  >
+                    Preview
+                  </a>
                   {profile.published ? (
                     <a
                       href={`/p/${profile.handle}`}
@@ -175,6 +193,12 @@ export default function CandidateDashboard() {
                 className="block rounded-md border border-zinc-200 px-4 py-3 text-zinc-700 hover:bg-zinc-50"
               >
                 Upload resume
+              </Link>
+              <Link
+                href="/candidate/availability"
+                className="block rounded-md border border-zinc-200 px-4 py-3 text-zinc-700 hover:bg-zinc-50"
+              >
+                Set availability
               </Link>
               <Link
                 href="/candidate/analytics"

@@ -2,13 +2,10 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateCorrelationId, createCorrelationLogger, CORRELATION_HEADER } from "@/lib/correlation";
 import { recordResumeParseGovernance } from "@/lib/keon/governance";
-import { existsSync } from "fs";
-import { mkdir, writeFile } from "fs/promises";
+import { saveResume } from "@/lib/storage";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { join } from "path";
 
-const UPLOAD_DIR = join(process.cwd(), "uploads", "resumes");
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = {
   "application/pdf": "pdf",
@@ -21,19 +18,17 @@ function isAllowedMimeType(type: string): type is AllowedMimeType {
   return type in ALLOWED_TYPES;
 }
 
-async function parseResume(filepath: string, fileType: string): Promise<string> {
+async function parseResume(buffer: Buffer, fileType: string): Promise<string> {
   try {
     if (fileType === "pdf") {
       const { PDFParse } = await import("pdf-parse");
-      const { readFile } = await import("fs/promises");
-      const buffer = await readFile(filepath);
       const parser = new PDFParse({ data: new Uint8Array(buffer) });
       const result = await parser.getText();
       return result.text ?? "";
     }
     if (fileType === "docx") {
       const mammoth = await import("mammoth");
-      const result = await mammoth.extractRawText({ path: filepath });
+      const result = await mammoth.extractRawText({ buffer });
       return result.value ?? "";
     }
   } catch (err) {
@@ -88,22 +83,18 @@ export async function POST(request: NextRequest) {
 
     const fileType = ALLOWED_TYPES[file.type];
 
-    if (!existsSync(UPLOAD_DIR)) {
-      await mkdir(UPLOAD_DIR, { recursive: true });
-    }
-
     const timestamp = Date.now();
     const filename = `${profile.id}_${timestamp}.${fileType}`;
-    const filepath = join(UPLOAD_DIR, filename);
-    const fileUrl = `/uploads/resumes/${filename}`;
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(filepath, buffer);
+
+    // Persist to durable storage (Azure Blob in prod, local disk in dev)
+    const fileUrl = await saveResume(filename, buffer, file.type);
 
     log.info("api.resume.file_saved", { filename });
 
-    // Parse resume text locally
-    const parsedText = await parseResume(filepath, fileType);
+    // Parse resume text from the uploaded buffer
+    const parsedText = await parseResume(buffer, fileType);
     const chunks = chunkText(parsedText);
 
     // Create resume record with parsed content

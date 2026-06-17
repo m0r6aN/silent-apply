@@ -214,9 +214,21 @@ export default function ProfileEditPage() {
       <div className="mx-auto max-w-2xl">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-zinc-900">{isNew ? "Create profile" : "Edit profile"}</h1>
-          <Link href="/candidate/dashboard" className="text-sm text-zinc-500 hover:text-zinc-700">
-            ← Dashboard
-          </Link>
+          <div className="flex items-center gap-4">
+            {!isNew && form.handle && (
+              <a
+                href={`/p/${form.handle}?preview=true`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-zinc-500 hover:text-zinc-700"
+              >
+                Preview
+              </a>
+            )}
+            <Link href="/candidate/dashboard" className="text-sm text-zinc-500 hover:text-zinc-700">
+              ← Dashboard
+            </Link>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

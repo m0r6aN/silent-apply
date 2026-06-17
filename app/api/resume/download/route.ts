@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { readFile } from "fs/promises";
-import { join } from "path";
-import { existsSync } from "fs";
 import { prisma } from "@/lib/prisma";
+import { readResume } from "@/lib/storage";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 export async function GET(request: NextRequest) {
@@ -49,20 +47,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Construct the file path
-    const filePath = join(process.cwd(), "uploads", "resumes", resume.fileUrl.split("/").pop()!);
-
-    // Check if file exists
-    if (!existsSync(filePath)) {
+    // Read the file from storage (Azure Blob in prod, local disk in dev)
+    const fileBuffer = await readResume(resume.fileUrl);
+    if (!fileBuffer) {
       return NextResponse.json(
         { error: "Resume file not found on server" },
         { status: 404 }
       );
     }
 
-    // Read the file
-    const fileBuffer = await readFile(filePath);
-    
     // Determine content type based on file extension
     const extension = resume.fileUrl.split(".").pop()?.toLowerCase();
     let contentType = "application/octet-stream";
@@ -76,7 +69,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Create response with file
-    const response = new NextResponse(fileBuffer);
+    const response = new NextResponse(new Uint8Array(fileBuffer));
     response.headers.set("Content-Type", contentType);
     response.headers.set(
       "Content-Disposition",

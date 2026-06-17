@@ -29,7 +29,7 @@ export default function Home() {
         <div className="relative mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 py-20 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] md:py-32">
           <div className="max-w-xl">
             <p className="text-xs font-medium uppercase tracking-[0.21em] text-white/70">
-              SilentApply AI
+              SilentApply
             </p>
             <h1 className={`${playfair.className} mt-4 text-4xl font-semibold leading-tight sm:text-5xl md:text-6xl`}>
               Your job search, already handled.
@@ -166,10 +166,6 @@ export default function Home() {
             Create your link
             <ArrowRight className="w-5 h-5" />
           </Link>
-          
-          <div className="mt-8 text-sm text-blue-200">
-            <p>SilentApply AI • Powered by OMEGA • Governed by Keon</p>
-          </div>
         </div>
       </section>
 
@@ -178,14 +174,14 @@ export default function Home() {
           <div className="mb-4 md:mb-0">
             <div className="flex items-center gap-2">
               <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-              <span className="font-semibold text-zinc-900 dark:text-white">SilentApply AI</span>
+              <span className="font-semibold text-zinc-900 dark:text-white">SilentApply</span>
             </div>
             <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
               Recruiter FAQ + Proof Pack for modern job seekers
             </p>
           </div>
           <div className="text-sm text-zinc-600 dark:text-zinc-400">
-            <p>© 2026 SilentApply AI. All rights reserved.</p>
+            <p>© 2026 SilentApply. All rights reserved.</p>
           </div>
         </div>
       </footer>

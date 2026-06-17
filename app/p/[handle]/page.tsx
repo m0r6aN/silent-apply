@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
 import { MapPin, Shield, CheckCircle, ExternalLink, Download } from 'lucide-react';
 import { logProfileViewed } from '@/lib/observability';
@@ -8,20 +10,44 @@ import BookingSection from './BookingSection';
 
 type Props = {
   params: Promise<{ handle: string }>;
+  searchParams: Promise<{ preview?: string }>;
 };
 
-export default async function PublicProfilePage({ params }: Props) {
-  const { handle } = await params;
+const resumeInclude = {
+  resumes: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+  },
+};
 
-  const profile = await prisma.profile.findUnique({
-    where: { handle, published: true },
-    include: {
-      resumes: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-    },
-  });
+export default async function PublicProfilePage({ params, searchParams }: Props) {
+  const { handle } = await params;
+  const { preview } = await searchParams;
+
+  // Preview mode: the owning candidate can view an unpublished profile.
+  let previewMode = false;
+  let profile = null;
+
+  if (preview === 'true') {
+    const session = await getServerSession(authOptions);
+    if (session?.user?.id) {
+      const candidate = await prisma.profile.findUnique({
+        where: { handle },
+        include: resumeInclude,
+      });
+      if (candidate && candidate.userId === session.user.id) {
+        profile = candidate;
+        previewMode = true;
+      }
+    }
+  }
+
+  if (!profile) {
+    profile = await prisma.profile.findUnique({
+      where: { handle, published: true },
+      include: resumeInclude,
+    });
+  }
 
   if (!profile) {
     notFound();
@@ -39,8 +65,11 @@ export default async function PublicProfilePage({ params }: Props) {
   const visibility = (profile.visibilityJson ?? {}) as Visibility;
   const proofLinks = (profile.proofLinks ?? []) as ProofLink[];
 
-  const correlationId = generateCorrelationId();
-  logProfileViewed(profile.id, correlationId).catch(() => {});
+  // Don't record a view when the owner is previewing their own draft.
+  if (!previewMode) {
+    const correlationId = generateCorrelationId();
+    logProfileViewed(profile.id, correlationId).catch(() => {});
+  }
 
   const locationLabels: Record<string, string> = {
     remote: 'Remote',
@@ -56,6 +85,11 @@ export default async function PublicProfilePage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-white">
+      {previewMode && (
+        <div className="bg-zinc-900 px-4 py-3 text-center text-sm text-white">
+          This is a preview. Your profile is not yet published.
+        </div>
+      )}
       {/* Above the fold */}
       <div className="border-b border-zinc-100 px-4 py-12">
         <div className="mx-auto max-w-2xl">

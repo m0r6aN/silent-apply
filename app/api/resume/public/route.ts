@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { readFile } from "fs/promises";
-import { existsSync } from "fs";
-import { join } from "path";
+import { readResume } from "@/lib/storage";
 import { generateCorrelationId } from "@/lib/correlation";
 import { logResumeDownloaded } from "@/lib/observability";
 
@@ -32,13 +30,12 @@ export async function GET(request: NextRequest) {
   if (visibility.resume !== true) return new NextResponse(null, { status: 404 });
 
   const filename = resume.fileUrl.split("/").pop() ?? "resume";
-  const filePath = join(process.cwd(), "uploads", "resumes", filename);
 
-  if (!existsSync(filePath)) {
+  const buffer = await readResume(resume.fileUrl);
+  if (!buffer) {
     return new NextResponse(null, { status: 404 });
   }
 
-  const buffer = await readFile(filePath);
   const ext = filename.split(".").pop()?.toLowerCase() ?? "bin";
 
   const contentTypes: Record<string, string> = {
@@ -49,7 +46,7 @@ export async function GET(request: NextRequest) {
 
   logResumeDownloaded(resume.profile.id, correlationId, { resumeId }).catch(() => {});
 
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": contentTypes[ext] ?? "application/octet-stream",
       "Content-Disposition": `attachment; filename="resume.${ext}"`,

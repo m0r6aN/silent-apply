@@ -15,9 +15,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
-import { addDays, addHours, startOfDay, isWithinInterval } from 'date-fns';
+import { addDays, addHours, isWithinInterval } from 'date-fns';
 import { getOrCreateCorrelationId, CORRELATION_HEADER, createCorrelationLogger } from '@/lib/correlation';
 import { allowBookingHold, allowBookingHoldByIP, getClientIP } from '@/lib/rateLimit';
+import { sendBookingConfirmationEmails } from '@/lib/bookingEmail';
 
 const getSlotsSchema = z.object({
   profileHandle: z.string().min(1).max(64),
@@ -89,9 +90,16 @@ export async function GET(request: NextRequest) {
       data: { status: 'open' },
     });
 
-    const targetDate = new Date(dateStr);
-    const startOfTargetDate = startOfDay(targetDate);
+    // Parse the date as a UTC day so generated slots align with stored windows.
+    const startOfTargetDate = new Date(`${dateStr}T00:00:00.000Z`);
     const endOfTargetDate = addDays(startOfTargetDate, 1);
+    const dayOfWeek = startOfTargetDate.getUTCDay();
+
+    // Candidate-defined availability windows for this weekday (minutes from 00:00 UTC).
+    const windows = (await prisma.availabilityWindow.findMany({
+      where: { profileId: profile.id, dayOfWeek },
+      orderBy: { startMinute: 'asc' },
+    })) as Array<{ startMinute: number; endMinute: number }>;
 
     // Get existing bookings for this date (held or booked only)
     const existingBookings = (await prisma.booking.findMany({
@@ -107,35 +115,39 @@ export async function GET(request: NextRequest) {
       },
     })) as Array<{ startTime: Date; endTime: Date }>;
 
-    // Generate available slots (9 AM - 5 PM, 1-hour slots)
+    const now = new Date();
+
+    // Generate 1-hour slots from each availability window.
     const slots = [];
-    const startHour = 9;
-    const endHour = 17;
+    for (const window of windows) {
+      for (let minute = window.startMinute; minute + 60 <= window.endMinute; minute += 60) {
+        const slotStart = new Date(startOfTargetDate.getTime() + minute * 60 * 1000);
+        const slotEnd = addHours(slotStart, 1);
 
-    for (let hour = startHour; hour < endHour; hour++) {
-      const slotStart = addHours(startOfTargetDate, hour);
-      const slotEnd = addHours(slotStart, 1);
+        // Don't offer slots in the past.
+        if (slotStart <= now) continue;
 
-      // Check if slot overlaps with any existing booking
-      const isBooked = existingBookings.some((booking) => {
-        return (
-          isWithinInterval(slotStart, {
-            start: booking.startTime,
-            end: booking.endTime,
-          }) ||
-          isWithinInterval(slotEnd, {
-            start: booking.startTime,
-            end: booking.endTime,
-          })
-        );
-      });
-
-      if (!isBooked) {
-        slots.push({
-          startTime: slotStart.toISOString(),
-          endTime: slotEnd.toISOString(),
-          available: true,
+        // Check if slot overlaps with any existing booking
+        const isBooked = existingBookings.some((booking) => {
+          return (
+            isWithinInterval(slotStart, {
+              start: booking.startTime,
+              end: booking.endTime,
+            }) ||
+            isWithinInterval(slotEnd, {
+              start: booking.startTime,
+              end: booking.endTime,
+            })
+          );
         });
+
+        if (!isBooked) {
+          slots.push({
+            startTime: slotStart.toISOString(),
+            endTime: slotEnd.toISOString(),
+            available: true,
+          });
+        }
       }
     }
 
@@ -337,7 +349,7 @@ export async function PUT(request: NextRequest) {
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { profile: true },
+      include: { profile: { include: { user: true } } },
     });
 
     if (!booking) {
@@ -413,7 +425,16 @@ export async function PUT(request: NextRequest) {
         },
       });
 
-      // Booking confirmed — notification delivery handled by candidate's own email setup
+      // Notify both parties (non-blocking; failures must not break confirmation).
+      sendBookingConfirmationEmails({
+        bookingId,
+        recruiterEmail: email,
+        recruiterName: name ?? null,
+        candidateEmail: booking.profile.user?.email ?? null,
+        candidateHandle: booking.profile.handle,
+        start: booking.startTime,
+        end: booking.endTime,
+      }).catch((err) => log.error('booking.confirmation_email_error', err));
 
       return NextResponse.json(
         {
