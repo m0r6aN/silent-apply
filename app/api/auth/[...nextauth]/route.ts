@@ -1,39 +1,21 @@
 import { prisma } from "@/lib/prisma";
 import { allowAuthEmailSend } from "@/lib/auth/rateLimit";
+import { sendEmail } from "@/lib/email";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import NextAuth from "next-auth";
 import EmailProvider from "next-auth/providers/email";
-import nodemailer from "nodemailer";
 
 export const authOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     EmailProvider({
       maxAge: 15 * 60,
-      server: {
-        host: process.env.EMAIL_SERVER_HOST,
-        port: Number(process.env.EMAIL_SERVER_PORT),
-        auth: {
-          user: process.env.EMAIL_SERVER_USER,
-          pass: process.env.EMAIL_SERVER_PASSWORD,
-        },
-      },
       from: process.env.EMAIL_FROM,
-      sendVerificationRequest: async ({ identifier, url, provider }) => {
+      sendVerificationRequest: async ({ identifier, url }) => {
         const email = identifier;
         const allowed = await allowAuthEmailSend(email);
         if (!allowed) return;
 
-        const server = provider.server ?? {
-          host: process.env.EMAIL_SERVER_HOST,
-          port: Number(process.env.EMAIL_SERVER_PORT),
-          auth: {
-            user: process.env.EMAIL_SERVER_USER,
-            pass: process.env.EMAIL_SERVER_PASSWORD,
-          },
-        };
-
-        const transport = nodemailer.createTransport(server);
         const baseUrl = new URL(url).origin;
         const termsUrl = `${baseUrl}/terms`;
         const privacyUrl = `${baseUrl}/privacy`;
@@ -78,13 +60,7 @@ Privacy: ${privacyUrl}
             </p>
           </div>
         `;
-        await transport.sendMail({
-          to: identifier,
-          from: provider.from,
-          subject,
-          text,
-          html,
-        });
+        await sendEmail({ to: identifier, subject, text, html });
       },
     }),
   ],

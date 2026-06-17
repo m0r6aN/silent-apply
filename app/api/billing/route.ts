@@ -21,36 +21,30 @@ const STRIPE_PRICE_IDS = {
   yearly: process.env.STRIPE_PRICE_ID_YEARLY || 'price_yearly_mvp',
 };
 
+// Canon: free core is fully usable. Q&A, booking, resume, and visibility are unlimited on free.
 const PLANS = {
   free: {
     name: 'Free',
     features: [
-      '1 profile',
-      'Basic analytics',
-      '10 Q&A questions/month',
-      '1 booking slot/month',
+      'Quiet Link',
+      'Profile data and proof links',
+      'Recruiter Q&A (unlimited)',
+      'Resume upload and download',
+      'Booking',
+      'Visibility controls',
     ],
-    limits: {
-      profiles: 1,
-      questionsPerMonth: 10,
-      bookingsPerMonth: 1,
-    },
+    limits: null,
   },
   pro: {
     name: 'Pro',
+    // Paid tier: contextual resume variants, advanced availability controls, quiet aggregate insights
     features: [
-      'Unlimited profiles',
-      'Advanced analytics',
-      'Unlimited Q&A questions',
-      'Unlimited booking slots',
-      'Priority support',
-      'Custom branding',
+      'Everything in Free',
+      'Contextual resume variants (coming soon)',
+      'Advanced availability controls (coming soon)',
+      'Quiet aggregate insights (coming soon)',
     ],
-    limits: {
-      profiles: 999,
-      questionsPerMonth: 9999,
-      bookingsPerMonth: 9999,
-    },
+    limits: null,
   },
 };
 
@@ -83,12 +77,8 @@ export async function GET(_request: NextRequest) {
       currentPlan,
       hasActiveSubscription,
       plans: PLANS,
-      usage: {
-        profiles: profileCount,
-        profilesLimit: PLANS[currentPlan].limits.profiles,
-        // TODO: Add actual usage tracking for questions and bookings
-      },
-      canUpgrade: currentPlan === 'free' && profileCount >= 1,
+      usage: { profiles: profileCount },
+      canUpgrade: currentPlan === 'free',
     });
 
   } catch (error) {

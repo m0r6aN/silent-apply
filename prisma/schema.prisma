@@ -39,9 +39,25 @@ model Profile {
   resumes        Resume[]
   qaThreads      QAThread[]
   bookings       Booking[]
+  availabilityWindows AvailabilityWindow[]
   analyticsEvents AnalyticsEvent[]
 
   @@map("profiles")
+}
+
+// Candidate-defined weekly availability windows used to generate bookable slots.
+// Times are minutes-from-midnight in UTC to match the booking API's UTC slots.
+model AvailabilityWindow {
+  id          String   @id @default(uuid())
+  profileId   String   @map("profile_id")
+  dayOfWeek   Int      @map("day_of_week")   // 0=Sunday .. 6=Saturday
+  startMinute Int      @map("start_minute")  // minutes from 00:00 UTC
+  endMinute   Int      @map("end_minute")    // minutes from 00:00 UTC
+  createdAt   DateTime @default(now()) @map("created_at")
+  profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("availability_windows")
 }
 
 model Resume {

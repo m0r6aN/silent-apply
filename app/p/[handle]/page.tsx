@@ -1,246 +1,230 @@
 import { notFound } from 'next/navigation';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
-import { Calendar, MapPin, DollarSign, Shield, CheckCircle, ExternalLink, MessageSquare, Download } from 'lucide-react';
-import Link from 'next/link';
+import { MapPin, Shield, CheckCircle, ExternalLink, Download } from 'lucide-react';
+import { logProfileViewed } from '@/lib/observability';
+import { generateCorrelationId } from '@/lib/correlation';
+import QASection from './QASection';
+import BookingSection from './BookingSection';
 
 type Props = {
   params: Promise<{ handle: string }>;
+  searchParams: Promise<{ preview?: string }>;
 };
 
-export default async function PublicProfilePage({ params }: Props) {
+const resumeInclude = {
+  resumes: {
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+  },
+};
+
+export default async function PublicProfilePage({ params, searchParams }: Props) {
   const { handle } = await params;
-  
-  const profile = await prisma.profile.findUnique({
-    where: { 
-      handle,
-      published: true,
-    },
-    include: {
-      resumes: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-    },
-  });
+  const { preview } = await searchParams;
+
+  // Preview mode: the owning candidate can view an unpublished profile.
+  let previewMode = false;
+  let profile = null;
+
+  if (preview === 'true') {
+    const session = await getServerSession(authOptions);
+    if (session?.user?.id) {
+      const candidate = await prisma.profile.findUnique({
+        where: { handle },
+        include: resumeInclude,
+      });
+      if (candidate && candidate.userId === session.user.id) {
+        profile = candidate;
+        previewMode = true;
+      }
+    }
+  }
+
+  if (!profile) {
+    profile = await prisma.profile.findUnique({
+      where: { handle, published: true },
+      include: resumeInclude,
+    });
+  }
 
   if (!profile) {
     notFound();
   }
 
-  const workAuth = profile.workAuthJson as any;
-  const availability = profile.availabilityJson as any;
-  const compensation = profile.compJson as any;
-  const visibility = profile.visibilityJson as any;
-  const proofLinks = profile.proofLinks as any[];
+  type WorkAuth = { citizen?: boolean; visa?: string; clearance?: string };
+  type Availability = { startDate?: string; employmentType?: string; noticePeriod?: number };
+  type Compensation = { min?: number; max?: number; currency?: string; visible?: boolean };
+  type Visibility = { workAuth?: boolean; compensation?: boolean; resume?: boolean; booking?: boolean };
+  type ProofLink = { url: string; label: string; type?: string };
+
+  const workAuth = (profile.workAuthJson ?? {}) as WorkAuth;
+  const availability = (profile.availabilityJson ?? {}) as Availability;
+  const compensation = (profile.compJson ?? null) as Compensation | null;
+  const visibility = (profile.visibilityJson ?? {}) as Visibility;
+  const proofLinks = (profile.proofLinks ?? []) as ProofLink[];
+
+  // Don't record a view when the owner is previewing their own draft.
+  if (!previewMode) {
+    const correlationId = generateCorrelationId();
+    logProfileViewed(profile.id, correlationId).catch(() => {});
+  }
+
+  const locationLabels: Record<string, string> = {
+    remote: 'Remote',
+    hybrid: profile.commuteMiles ? `Hybrid — within ${profile.commuteMiles} miles` : 'Hybrid',
+    onsite: profile.commuteMiles ? `Onsite — within ${profile.commuteMiles} miles` : 'Onsite',
+  };
+  const locationLabel = locationLabels[profile.locationMode] ?? profile.locationMode;
+
+  const resumeEnabled = visibility.resume === true && profile.resumes.length > 0;
+  const bookingEnabled = visibility.booking === true;
+  const showWorkAuth = visibility.workAuth === true;
+  const showComp = visibility.compensation === true;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-zinc-50 dark:from-black dark:to-zinc-900">
-      {/* Header */}
-      <header className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Shield className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-            <span className="font-semibold text-zinc-900 dark:text-white">SilentApply AI</span>
-          </div>
-          <div className="text-sm text-zinc-600 dark:text-zinc-400">
-            Powered by OMEGA • Governed by Keon
-          </div>
+    <div className="min-h-screen bg-white">
+      {previewMode && (
+        <div className="bg-zinc-900 px-4 py-3 text-center text-sm text-white">
+          This is a preview. Your profile is not yet published.
         </div>
-      </header>
-
-      {/* Profile Hero */}
-      <div className="container mx-auto px-4 py-12">
-        <div className="max-w-4xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-zinc-900 dark:text-white">
-              {profile.headline || 'Professional Profile'}
+      )}
+      {/* Above the fold */}
+      <div className="border-b border-zinc-100 px-4 py-12">
+        <div className="mx-auto max-w-2xl">
+          {profile.headline && (
+            <h1 className="text-3xl font-semibold text-zinc-900 mb-3">
+              {profile.headline}
             </h1>
-            <div className="flex flex-wrap gap-2 mb-6">
-              {profile.roles.map((role: string, index: number) => (
-                <span 
-                  key={index}
-                  className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-sm font-medium"
+          )}
+
+          {profile.roles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {profile.roles.map((role: string, i: number) => (
+                <span
+                  key={i}
+                  className="rounded-full border border-zinc-200 px-3 py-1 text-sm text-zinc-700"
                 >
                   {role}
                 </span>
               ))}
             </div>
+          )}
+
+          <div className="flex items-center gap-2 text-sm text-zinc-600">
+            <MapPin className="h-4 w-4 text-zinc-400" />
+            <span>{locationLabel}</span>
           </div>
 
-          {/* Key Information Grid */}
-          <div className="grid md:grid-cols-2 gap-6 mb-12">
-            {/* Location & Availability */}
-            <div className="bg-white dark:bg-zinc-800 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-700">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-zinc-900 dark:text-white">
-                <MapPin className="w-5 h-5" />
-                Location & Availability
-              </h2>
-              <div className="space-y-3">
-                <div>
-                  <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Work Preference</div>
-                  <div className="font-medium text-zinc-900 dark:text-white">
-                    {profile.locationMode.charAt(0).toUpperCase() + profile.locationMode.slice(1)}
-                    {profile.commuteMiles && ` (within ${profile.commuteMiles} miles)`}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Start Date</div>
-                  <div className="font-medium text-zinc-900 dark:text-white flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {availability?.startDate || 'Immediately'}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Employment Type</div>
-                  <div className="font-medium text-zinc-900 dark:text-white">
-                    {availability?.employmentType?.replace('-', ' ').toUpperCase() || 'Full-time'}
-                  </div>
-                </div>
+          {availability.employmentType && (
+            <p className="mt-2 text-sm text-zinc-600">
+              {availability.employmentType.replace(/-/g, ' ')}
+              {availability.startDate ? ` · available ${availability.startDate}` : ''}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Below the fold */}
+      <div className="mx-auto max-w-2xl px-4 py-10 space-y-10">
+
+        {/* Work authorization */}
+        {showWorkAuth && (
+          <section>
+            <h2 className="mb-3 text-base font-semibold text-zinc-800 flex items-center gap-2">
+              <Shield className="h-4 w-4 text-zinc-400" />
+              Work authorization
+            </h2>
+            <div className="space-y-1 text-sm text-zinc-700">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-zinc-400 shrink-0" />
+                <span>{workAuth.citizen ? 'US citizen / permanent resident' : 'Visa required'}</span>
               </div>
+              {workAuth.visa ? (
+                <p className="pl-6 text-zinc-600">Visa: {workAuth.visa}</p>
+              ) : null}
+              {workAuth.clearance ? (
+                <p className="pl-6 text-zinc-600">Clearance: {workAuth.clearance}</p>
+              ) : null}
             </div>
+          </section>
+        )}
 
-            {/* Work Authorization */}
-            <div className="bg-white dark:bg-zinc-800 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-700">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-zinc-900 dark:text-white">
-                <Shield className="w-5 h-5" />
-                Work Authorization
-              </h2>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Citizenship Status</div>
-                    <div className="font-medium text-zinc-900 dark:text-white">
-                      {workAuth?.citizen ? 'Citizen' : 'Visa Required'}
-                    </div>
-                  </div>
-                  <CheckCircle className="w-6 h-6 text-green-500" />
-                </div>
-                {workAuth?.visa && (
-                  <div>
-                    <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Visa Type</div>
-                    <div className="font-medium text-zinc-900 dark:text-white">
-                      {workAuth.visa}
-                    </div>
-                  </div>
-                )}
-                {workAuth?.clearance && (
-                  <div>
-                    <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Security Clearance</div>
-                    <div className="font-medium text-zinc-900 dark:text-white">
-                      {workAuth.clearance}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+        {/* Compensation */}
+        {showComp && compensation?.visible ? (
+          <section>
+            <h2 className="mb-3 text-base font-semibold text-zinc-800">Compensation</h2>
+            <p className="text-sm text-zinc-700">
+              {compensation.currency ?? 'USD'}{' '}
+              {typeof compensation.min === 'number' ? compensation.min.toLocaleString() : '?'}–
+              {typeof compensation.max === 'number' ? compensation.max.toLocaleString() : '?'}{' '}
+              annually
+            </p>
+          </section>
+        ) : null}
 
-            {/* Compensation */}
-            {compensation?.visible && (
-              <div className="bg-white dark:bg-zinc-800 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-700">
-                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-zinc-900 dark:text-white">
-                  <DollarSign className="w-5 h-5" />
-                  Compensation Expectations
-                </h2>
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Range</div>
-                    <div className="font-medium text-zinc-900 dark:text-white">
-                      {compensation.currency} {compensation.min.toLocaleString()} - {compensation.max.toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="text-sm text-zinc-600 dark:text-zinc-400">
-                    Annual salary expectations
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Resume Download */}
-            {profile.resumes.length > 0 && (
-              <div className="bg-white dark:bg-zinc-800 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-700">
-                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-zinc-900 dark:text-white">
-                  <Download className="w-5 h-5" />
-                  Resume
-                </h2>
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-sm text-zinc-600 dark:text-zinc-400 mb-1">Latest Resume</div>
-                    <a 
-                      href={`/api/resume/download/${profile.resumes[0].id}`}
-                      className="inline-flex items-center gap-2 font-medium text-blue-600 dark:text-blue-400 hover:underline"
-                    >
-                      Download Resume
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  </div>
-                  <div className="text-sm text-zinc-600 dark:text-zinc-400">
-                    Updated {new Date(profile.resumes[0].createdAt).toLocaleDateString()}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Proof Links */}
-          {proofLinks.length > 0 && (
-            <div className="mb-12">
-              <h2 className="text-2xl font-semibold mb-6 text-zinc-900 dark:text-white">Proof Links</h2>
-              <div className="grid md:grid-cols-2 gap-4">
-                {proofLinks.map((link: any, index: number) => (
+        {/* Proof links */}
+        {proofLinks.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-base font-semibold text-zinc-800">Work and proof</h2>
+            <ul className="space-y-2">
+              {proofLinks.map((link, i) => (
+                <li key={i}>
                   <a
-                    key={index}
                     href={link.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="bg-white dark:bg-zinc-800 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:border-blue-300 dark:hover:border-blue-700 transition-colors duration-200"
+                    className="flex items-center gap-2 text-sm text-zinc-700 hover:text-zinc-900"
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium text-zinc-900 dark:text-white mb-1">
-                          {link.label}
-                        </div>
-                        <div className="text-sm text-zinc-600 dark:text-zinc-400 truncate">
-                          {link.url.replace(/^https?:\/\//, '')}
-                        </div>
-                      </div>
-                      <ExternalLink className="w-5 h-5 text-zinc-400 dark:text-zinc-500" />
-                    </div>
+                    <ExternalLink className="h-4 w-4 text-zinc-400 shrink-0" />
+                    {link.label}
                   </a>
-                ))}
-              </div>
-            </div>
-          )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
-          {/* Action Section */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-8 text-center">
-            <h2 className="text-2xl font-bold mb-4 text-white">
-              Interested in connecting?
-            </h2>
-            <p className="text-blue-100 mb-6 max-w-2xl mx-auto">
-              This candidate is available for interviews and ready to discuss opportunities.
+        {/* Resume download */}
+        {resumeEnabled && (
+          <section>
+            <h2 className="mb-3 text-base font-semibold text-zinc-800">Resume</h2>
+            <a
+              href={`/api/resume/public?id=${profile.resumes[0].id}`}
+              className="inline-flex items-center gap-2 text-sm text-zinc-700 hover:text-zinc-900"
+            >
+              <Download className="h-4 w-4 text-zinc-400" />
+              Download resume
+            </a>
+            <p className="mt-1 text-xs text-zinc-500">
+              Updated {new Date(profile.resumes[0].createdAt).toLocaleDateString()}
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-blue-600 hover:bg-blue-50 font-semibold rounded-lg transition-colors duration-200">
-                <MessageSquare className="w-5 h-5" />
-                Ask a Question
-              </button>
-              <button className="inline-flex items-center justify-center gap-2 px-6 py-3 border-2 border-white text-white hover:bg-white/10 font-semibold rounded-lg transition-colors duration-200">
-                <Calendar className="w-5 h-5" />
-                Book a Call
-              </button>
-            </div>
-            <div className="mt-6 text-sm text-blue-200">
-              <p>Questions answered instantly via SilentApply AI Q&A</p>
-            </div>
-          </div>
+          </section>
+        )}
 
-          {/* Footer Note */}
-          <div className="mt-8 text-center text-sm text-zinc-600 dark:text-zinc-400">
-            <p>Profile created with SilentApply AI • Powered by OMEGA • Governed by Keon</p>
-            <p className="mt-1">This page answers common recruiter questions to reduce email back-and-forth</p>
-          </div>
-        </div>
+        {/* Recruiter Q&A */}
+        <section>
+          <h2 className="mb-3 text-base font-semibold text-zinc-800">Questions</h2>
+          <p className="mb-4 text-sm text-zinc-500">
+            Questions are answered from profile and resume data only.
+          </p>
+          <QASection profileHandle={handle} />
+        </section>
+
+        {/* Booking */}
+        {bookingEnabled && (
+          <section>
+            <h2 className="mb-3 text-base font-semibold text-zinc-800">Schedule a conversation</h2>
+            <BookingSection profileHandle={handle} />
+          </section>
+        )}
+
       </div>
+
+      <footer className="border-t border-zinc-100 px-4 py-6 text-center text-xs text-zinc-400">
+        SilentApply
+      </footer>
     </div>
   );
 }
